@@ -14,6 +14,8 @@ import {
 
 export interface Task {
   id: string;
+  pmsId?: string;
+  pmsSubtaskId?: string;
   project: string;
   title: string;
   subTask?: string;
@@ -79,8 +81,8 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete }: TaskT
           </TableHeader>
           <TableBody>
             {tasks.map((task) => (
-              <TableRow 
-                key={task.id} 
+              <TableRow
+                key={task.id}
                 className="border-blue-500/10 hover:bg-slate-700/30"
                 data-testid={`row-task-${task.id}`}
               >
@@ -136,8 +138,8 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete }: TaskT
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2 min-w-[100px]">
-                    <Progress 
-                      value={task.percentageComplete} 
+                    <Progress
+                      value={task.percentageComplete}
                       className="h-2 bg-slate-700"
                     />
                     <span className="text-xs text-blue-200 w-8">
@@ -149,9 +151,9 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete }: TaskT
                   {(task.serverStatus === 'draft' || task.serverStatus === 'pending') ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button 
-                          size="icon" 
-                          variant="ghost" 
+                        <Button
+                          size="icon"
+                          variant="ghost"
                           className="text-slate-400 hover:text-white"
                           data-testid={`button-task-actions-${task.id}`}
                         >
@@ -159,7 +161,7 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete }: TaskT
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="bg-slate-800 border-blue-500/20">
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={() => onEdit(task)}
                           className="text-blue-200 focus:bg-slate-700 focus:text-white"
                           data-testid={`button-edit-${task.id}`}
@@ -168,7 +170,7 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete }: TaskT
                           Edit
                         </DropdownMenuItem>
                         {task.serverStatus === 'draft' && !task.isComplete && (
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => onComplete(task.id)}
                             className="text-green-400 focus:bg-slate-700 focus:text-green-300"
                             data-testid={`button-complete-${task.id}`}
@@ -177,7 +179,7 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete }: TaskT
                             Mark Complete
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={() => onDelete(task.id)}
                           className="text-red-400 focus:bg-slate-700 focus:text-red-300"
                           data-testid={`button-delete-${task.id}`}

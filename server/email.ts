@@ -1,6 +1,7 @@
 // Resend email integration for Time Strap
 import { Resend } from "resend";
 import "dotenv/config";
+import { TimeEntry } from "@shared/schema";
 
 /* ============================
    CONFIGURATION
@@ -29,426 +30,181 @@ const NOTIFICATION_RECIPIENTS = SENDER_EMAILS.split(",").map((email: string) => 
 console.log("[EMAIL CONFIG] Recipients:", NOTIFICATION_RECIPIENTS);
 
 /* ============================
-   SEND SUBMISSION EMAIL
+   HELPERS / TEMPLATES
 ============================ */
 
-export async function sendTimesheetSubmittedEmail(data: {
-  // Employee Information
+function generateTaskTable(tasks: TimeEntry[]) {
+  return `
+    <table style="width:100%; border-collapse: collapse; margin-top: 20px; font-size: 14px;">
+      <thead>
+        <tr style="background-color: #1e293b; color: #ffffff;">
+          <th style="padding: 12px; border: 1px solid #334155; text-align: left;">Project</th>
+          <th style="padding: 12px; border: 1px solid #334155; text-align: left;">Task Description</th>
+          <th style="padding: 12px; border: 1px solid #334155; text-align: center;">Hrs</th>
+          <th style="padding: 12px; border: 1px solid #334155; text-align: center;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${tasks.map(task => `
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 12px; border: 1px solid #e2e8f0;">${task.projectName}</td>
+            <td style="padding: 12px; border: 1px solid #e2e8f0;">${task.taskDescription}</td>
+            <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${task.totalHours}</td>
+            <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">
+               <span style="padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; 
+                ${task.status === 'approved' ? 'background: #dcfce7; color: #166534;' :
+      task.status === 'rejected' ? 'background: #fee2e2; color: #991b1b;' :
+        'background: #dbeafe; color: #1e40af;'}">
+                ${(task.status || 'PENDING').toUpperCase()}
+              </span>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// 1. Grouped submission summary email
+export async function sendTimesheetSummaryEmail(data: {
   employeeId: string;
   employeeName: string;
   employeeCode: string;
-  
-  // Work Details
   date: string;
-  projectName: string;
-  taskDescription: string;
-  problemAndIssues?: string;
-  quantify: string;
-  achievements?: string;
-  scopeOfImprovements?: string;
-  toolsUsed?: string[];
-  
-  // Time Information
-  startTime: string;
-  endTime: string;
   totalHours: string;
-  
-  // Status Information
-  percentageComplete: number;
-  status: string;
-  submittedAt?: string;
+  tasks: TimeEntry[];
+  status: string; // usually 'pending'
 }) {
   try {
-    const toolsUsedList = Array.isArray(data.toolsUsed) 
-      ? data.toolsUsed.join(", ") 
-      : data.toolsUsed || "N/A";
-    
-    const status = data.status || "pending"; // Default to pending if not provided
+    const { employeeName, employeeCode, date, totalHours, tasks } = data;
+    const taskTable = generateTaskTable(tasks);
 
     const { data: result, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: NOTIFICATION_RECIPIENTS,
-      subject: `Timesheet Submitted - ${data.employeeName} (${data.employeeCode}) - ${data.date}`,
+      subject: `Timesheet Submission Summary - ${employeeName} (${employeeCode}) - ${date}`,
       html: `
-      <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin:0 auto;">
         <div style="background:#0f172a;padding:20px;text-align:center;">
           <h1 style="color:#3b82f6;margin:0;">Time Strap</h1>
-          <p style="color:#94a3b8;">Timesheet Submission Notification</p>
+          <p style="color:#94a3b8;">Timesheet Summary</p>
         </div>
-
         <div style="padding:30px;background:#f8fafc;">
-          <h2 style="color:#0f172a;margin-top:0;">New Timesheet Submitted</h2>
-
-          <!-- Employee Information -->
-          <div style="margin-bottom:25px;">
-            <h3 style="color:#475569;font-size:14px;margin-bottom:10px;border-bottom:2px solid #3b82f6;padding-bottom:5px;">EMPLOYEE INFORMATION</h3>
-            <table style="width:100%;border-collapse:collapse;">
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Employee Name</td>
-                <td style="padding:8px;color:#475569;">${data.employeeName}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Employee Code</td>
-                <td style="padding:8px;color:#475569;">${data.employeeCode}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Employee ID</td>
-                <td style="padding:8px;color:#475569;">${data.employeeId}</td>
-              </tr>
-            </table>
-          </div>
-
-          <!-- Work Details -->
-          <div style="margin-bottom:25px;">
-            <h3 style="color:#475569;font-size:14px;margin-bottom:10px;border-bottom:2px solid #3b82f6;padding-bottom:5px;">WORK DETAILS</h3>
-            <table style="width:100%;border-collapse:collapse;">
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Date</td>
-                <td style="padding:8px;color:#475569;">${data.date}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Project Name</td>
-                <td style="padding:8px;color:#475569;">${data.projectName}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Task Description</td>
-                <td style="padding:8px;color:#475569;">${data.taskDescription}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Quantify</td>
-                <td style="padding:8px;color:#475569;">${data.quantify}</td>
-              </tr>
-              ${data.achievements ? `<tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Achievements</td>
-                <td style="padding:8px;color:#475569;">${data.achievements}</td>
-              </tr>` : ''}
-              ${data.problemAndIssues ? `<tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Problems & Issues</td>
-                <td style="padding:8px;color:#475569;">${data.problemAndIssues}</td>
-              </tr>` : ''}
-              ${data.scopeOfImprovements ? `<tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Scope of Improvements</td>
-                <td style="padding:8px;color:#475569;">${data.scopeOfImprovements}</td>
-              </tr>` : ''}
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Tools Used</td>
-                <td style="padding:8px;color:#475569;">${toolsUsedList}</td>
-              </tr>
-            </table>
-          </div>
-
-          <!-- Time Information -->
-          <div style="margin-bottom:25px;">
-            <h3 style="color:#475569;font-size:14px;margin-bottom:10px;border-bottom:2px solid #3b82f6;padding-bottom:5px;">TIME INFORMATION</h3>
-            <table style="width:100%;border-collapse:collapse;">
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Start Time</td>
-                <td style="padding:8px;color:#475569;">${data.startTime}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">End Time</td>
-                <td style="padding:8px;color:#475569;">${data.endTime}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Total Hours</td>
-                <td style="padding:8px;color:#475569;"><b>${data.totalHours}</b></td>
-              </tr>
-            </table>
-          </div>
-
-          <!-- Status Information -->
-          <div style="margin-bottom:25px;">
-            <h3 style="color:#475569;font-size:14px;margin-bottom:10px;border-bottom:2px solid #3b82f6;padding-bottom:5px;">STATUS INFORMATION</h3>
-            <table style="width:100%;border-collapse:collapse;">
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Percentage Complete</td>
-                <td style="padding:8px;color:#475569;">${data.percentageComplete}%</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Status</td>
-                <td style="padding:8px;">
-                  <span style="background:#fef3c7;color:#92400e;padding:4px 8px;border-radius:4px;font-weight:bold;">${status.toUpperCase()}</span>
-                </td>
-              </tr>
-              ${data.submittedAt ? `<tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Submitted At</td>
-                <td style="padding:8px;color:#475569;">${data.submittedAt}</td>
-              </tr>` : ''}
-            </table>
-          </div>
-
-          <div style="background:#dbeafe;padding:15px;border-radius:8px;margin-top:20px;">
-            <p style="margin:0;color:#1e40af;font-size:14px;">
-              ✓ Please review and approve this timesheet through the Time Strap portal.
-            </p>
-          </div>
+          <h2 style="color:#0f172a;margin-top:0;">New Timesheet Submission</h2>
+          <p><strong>Employee:</strong> ${employeeName} (${employeeCode})</p>
+          <p><strong>Date:</strong> ${date}</p>
+          <p><strong>Total Hours:</strong> ${totalHours}</p>
+          ${taskTable}
         </div>
-
         <div style="background:#1e293b;padding:15px;text-align:center;">
-          <p style="color:#94a3b8;font-size:12px;margin:0;">
-            Automated email from Time Strap System
-          </p>
+          <p style="color:#94a3b8;font-size:12px;margin:0;">Automated email from Time Strap System</p>
         </div>
       </div>
       `
     });
 
-    console.log("[EMAIL SEND] Attempting to send email...");
-    console.log("[EMAIL SEND] From:", FROM_EMAIL);
-    console.log("[EMAIL SEND] To:", NOTIFICATION_RECIPIENTS);
-    console.log("[EMAIL SEND] Subject:", `Timesheet Submitted - ${data.employeeName} (${data.employeeCode}) - ${data.date}`);
-
     if (error) {
-      console.error("[EMAIL ERROR] Failed to send email:", error);
+      console.error("[SUMMARY EMAIL ERROR]", error);
       return { success: false, error };
     }
-
-    console.log("[EMAIL SUCCESS] Email sent with ID:", result?.id);
+    console.log("[SUMMARY EMAIL] sent:", result?.id);
     return { success: true, result };
-
   } catch (err) {
-    console.error("[EMAIL ERROR] Email service error:", err);
+    console.error("[SUMMARY EMAIL ERROR]", err);
     return { success: false, err };
   }
 }
 
-/* ============================
-   SEND APPROVAL EMAIL
-============================ */
-
-export async function sendApprovalEmail(data: {
+// 2. Grouped approval/rejection email
+export async function sendApprovalSummaryEmail(data: {
+  employeeId: string;
   employeeName: string;
   employeeCode: string;
   date: string;
+  tasks: TimeEntry[];
   status: "manager_approved" | "approved" | "rejected";
   approverName?: string;
   rejectionReason?: string;
+  recipients?: string[];
 }) {
   try {
+    const { employeeName, employeeCode, date, tasks, status, approverName, rejectionReason, recipients } = data;
+    const taskTable = generateTaskTable(tasks);
 
-    const statusText =
-      data.status === "approved"
-        ? "Fully Approved"
-        : data.status === "manager_approved"
-        ? "Manager Approved"
-        : "Rejected";
+    let statusText = '';
+    let color = '';
+    if (status === 'manager_approved') {
+      statusText = 'Manager Approved';
+      color = '#3b82f6';
+    } else if (status === 'approved') {
+      statusText = 'Final Approved';
+      color = '#22c55e';
+    } else {
+      statusText = 'Rejected';
+      color = '#ef4444';
+    }
 
-    const statusColor =
-      data.status === "approved"
-        ? "#22c55e"
-        : data.status === "manager_approved"
-        ? "#3b82f6"
-        : "#ef4444";
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width:800px; margin:0 auto; background-color:#0f172a; color:#ffffff;">
+        <div style="padding:20px;text-align:center;">
+          <h1>Time Strap</h1>
+          <p>Status Update: <span style="color:${color}; font-weight:bold;">${statusText}</span></p>
+        </div>
+        <div style="padding:30px; background:#1e293b; color:#e2e8f0;">
+          <p><strong>Employee:</strong> ${employeeName} (${employeeCode})</p>
+          <p><strong>Date:</strong> ${date}</p>
+          ${approverName ? `<p><strong>Approved By:</strong> ${approverName}</p>` : ''}
+          ${rejectionReason ? `<p><strong>Reason:</strong> ${rejectionReason}</p>` : ''}
+          ${taskTable}
+        </div>
+        <div style="background:#0f172a;padding:15px;text-align:center;">
+          <p style="color:#94a3b8;font-size:12px;margin:0;">Automated email from Time Strap System</p>
+        </div>
+      </div>
+    `;
 
     const { data: result, error } = await resend.emails.send({
       from: FROM_EMAIL,
-      to: NOTIFICATION_RECIPIENTS,
-      subject: `Timesheet ${statusText} - ${data.employeeName}`,
-      html: `
-      <div style="font-family: Arial; max-width:600px; margin:auto;">
-        <h2>Status Update</h2>
-
-        <div style="padding:10px;border-left:5px solid ${statusColor}">
-          <b style="color:${statusColor};">${statusText}</b>
-        </div>
-
-        <table style="width:100%;margin-top:20px;">
-          <tr><td>Employee</td><td>${data.employeeName}</td></tr>
-          <tr><td>Code</td><td>${data.employeeCode}</td></tr>
-          <tr><td>Date</td><td>${data.date}</td></tr>
-
-          ${
-            data.approverName
-              ? `<tr><td>Approved By</td><td>${data.approverName}</td></tr>`
-              : ""
-          }
-
-          ${
-            data.rejectionReason
-              ? `<tr><td>Reason</td><td>${data.rejectionReason}</td></tr>`
-              : ""
-          }
-        </table>
-      </div>
-      `
+      to: recipients || NOTIFICATION_RECIPIENTS,
+      subject: `Timesheet ${statusText} - ${employeeName} (${employeeCode}) - ${date}`,
+      html
     });
 
     if (error) {
-      console.error("Approval email error:", error);
+      console.error("[APPROVAL SUMMARY EMAIL ERROR]", error);
       return { success: false, error };
     }
-
-    console.log("Approval email sent:", result?.id);
+    console.log("[APPROVAL SUMMARY EMAIL] sent:", result?.id);
     return { success: true, result };
-
   } catch (err) {
-    console.error("Email service error:", err);
+    console.error("[APPROVAL SUMMARY EMAIL ERROR]", err);
     return { success: false, err };
   }
 }
-/* ============================
-   SEND DAILY TASKS SUMMARY EMAIL
-============================ */
 
-export async function sendDailyTasksSummaryEmail(data: {
-  employeeId: string;
-  employeeName: string;
-  employeeCode: string;
-  date: string;
-  tasks: Array<{
-    projectName: string;
-    taskDescription: string;
-    problemAndIssues?: string;
-    quantify: string;
-    achievements?: string;
-    scopeOfImprovements?: string;
-    toolsUsed?: string[];
-    startTime: string;
-    endTime: string;
-    totalHours: string;
-    percentageComplete: number;
-  }>;
-  totalHoursForDay: string;
-  submittedAt?: string;
+// Generic email sender
+export async function sendEmail(data: {
+  to: string[];
+  subject: string;
+  html: string;
 }) {
   try {
-    // Calculate total tasks
-    const totalTasks = data.tasks.length;
-    
-    // Generate HTML for all tasks
-    const tasksHtml = data.tasks
-      .map((task, index) => {
-        const toolsUsedList = Array.isArray(task.toolsUsed)
-          ? task.toolsUsed.join(", ")
-          : task.toolsUsed || "N/A";
-
-        return `
-        <div style="margin-bottom:20px;padding:15px;background:#f1f5f9;border-left:4px solid #3b82f6;border-radius:4px;">
-          <h4 style="margin:0 0 10px 0;color:#0f172a;">Task ${index + 1}: ${task.projectName}</h4>
-          <table style="width:100%;border-collapse:collapse;font-size:13px;">
-            <tr style="border-bottom:1px solid #e2e8f0;">
-              <td style="padding:6px;font-weight:bold;color:#334155;width:30%;">Task Description</td>
-              <td style="padding:6px;color:#475569;">${task.taskDescription}</td>
-            </tr>
-            <tr style="border-bottom:1px solid #e2e8f0;">
-              <td style="padding:6px;font-weight:bold;color:#334155;">Time</td>
-              <td style="padding:6px;color:#475569;">${task.startTime} - ${task.endTime} (${task.totalHours} hrs)</td>
-            </tr>
-            <tr style="border-bottom:1px solid #e2e8f0;">
-              <td style="padding:6px;font-weight:bold;color:#334155;">Quantify</td>
-              <td style="padding:6px;color:#475569;">${task.quantify}</td>
-            </tr>
-            ${task.achievements ? `<tr style="border-bottom:1px solid #e2e8f0;">
-              <td style="padding:6px;font-weight:bold;color:#334155;">Achievements</td>
-              <td style="padding:6px;color:#475569;">${task.achievements}</td>
-            </tr>` : ''}
-            ${task.problemAndIssues ? `<tr style="border-bottom:1px solid #e2e8f0;">
-              <td style="padding:6px;font-weight:bold;color:#334155;">Problems & Issues</td>
-              <td style="padding:6px;color:#475569;">${task.problemAndIssues}</td>
-            </tr>` : ''}
-            ${task.scopeOfImprovements ? `<tr style="border-bottom:1px solid #e2e8f0;">
-              <td style="padding:6px;font-weight:bold;color:#334155;">Improvements</td>
-              <td style="padding:6px;color:#475569;">${task.scopeOfImprovements}</td>
-            </tr>` : ''}
-            <tr>
-              <td style="padding:6px;font-weight:bold;color:#334155;">Tools Used</td>
-              <td style="padding:6px;color:#475569;">${toolsUsedList}</td>
-            </tr>
-          </table>
-        </div>
-        `;
-      })
-      .join("");
-
+    const { to, subject, html } = data;
     const { data: result, error } = await resend.emails.send({
       from: FROM_EMAIL,
-      to: NOTIFICATION_RECIPIENTS,
-      subject: `Daily Timesheet Summary - ${data.employeeName} (${data.employeeCode}) - ${data.date} [${totalTasks} tasks]`,
-      html: `
-      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
-        <div style="background:#0f172a;padding:20px;text-align:center;">
-          <h1 style="color:#3b82f6;margin:0;">Time Strap</h1>
-          <p style="color:#94a3b8;">Daily Timesheet Summary</p>
-        </div>
-
-        <div style="padding:30px;background:#f8fafc;">
-          <h2 style="color:#0f172a;margin-top:0;">Daily Timesheet Submitted</h2>
-
-          <!-- Employee Information -->
-          <div style="margin-bottom:25px;">
-            <h3 style="color:#475569;font-size:14px;margin-bottom:10px;border-bottom:2px solid #3b82f6;padding-bottom:5px;">EMPLOYEE INFORMATION</h3>
-            <table style="width:100%;border-collapse:collapse;font-size:13px;">
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;width:30%;">Employee Name</td>
-                <td style="padding:8px;color:#475569;">${data.employeeName}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Employee Code</td>
-                <td style="padding:8px;color:#475569;">${data.employeeCode}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Date</td>
-                <td style="padding:8px;color:#475569;">${data.date}</td>
-              </tr>
-            </table>
-          </div>
-
-          <!-- Summary Statistics -->
-          <div style="margin-bottom:25px;">
-            <h3 style="color:#475569;font-size:14px;margin-bottom:10px;border-bottom:2px solid #3b82f6;padding-bottom:5px;">SUMMARY</h3>
-            <table style="width:100%;border-collapse:collapse;font-size:13px;">
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Total Tasks</td>
-                <td style="padding:8px;color:#475569;">${totalTasks}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;font-weight:bold;color:#334155;">Total Hours</td>
-                <td style="padding:8px;color:#475569;"><b>${data.totalHoursForDay}</b></td>
-              </tr>
-              ${data.submittedAt ? `<tr>
-                <td style="padding:8px;font-weight:bold;color:#334155;">Submitted At</td>
-                <td style="padding:8px;color:#475569;">${data.submittedAt}</td>
-              </tr>` : ''}
-            </table>
-          </div>
-
-          <!-- Tasks Details -->
-          <div style="margin-bottom:25px;">
-            <h3 style="color:#475569;font-size:14px;margin-bottom:10px;border-bottom:2px solid #3b82f6;padding-bottom:5px;">TASK DETAILS (${totalTasks} tasks)</h3>
-            ${tasksHtml}
-          </div>
-
-          <div style="background:#dbeafe;padding:15px;border-radius:8px;margin-top:20px;">
-            <p style="margin:0;color:#1e40af;font-size:14px;">
-              ✓ Daily timesheet submitted. Please review and approve through the Time Strap portal.
-            </p>
-          </div>
-        </div>
-
-        <div style="background:#1e293b;padding:15px;text-align:center;">
-          <p style="color:#94a3b8;font-size:12px;margin:0;">
-            Automated email from Time Strap System
-          </p>
-        </div>
-      </div>
-      `
+      to,
+      subject,
+      html
     });
 
-    console.log("[DAILY EMAIL SEND] Attempting to send daily summary email...");
-    console.log("[DAILY EMAIL SEND] From:", FROM_EMAIL);
-    console.log("[DAILY EMAIL SEND] To:", NOTIFICATION_RECIPIENTS);
-    console.log("[DAILY EMAIL SEND] Subject:", `Daily Timesheet Summary - ${data.employeeName} (${data.employeeCode}) - ${data.date} [${totalTasks} tasks]`);
-
     if (error) {
-      console.error("[DAILY EMAIL ERROR] Failed to send email:", error);
+      console.error("[EMAIL ERROR]", error);
       return { success: false, error };
     }
-
-    console.log("[DAILY EMAIL SUCCESS] Email sent with ID:", result?.id);
+    console.log("[EMAIL SENT]:", result?.id);
     return { success: true, result };
-
   } catch (err) {
-    console.error("[DAILY EMAIL ERROR] Email service error:", err);
+    console.error("[EMAIL ERROR]", err);            
     return { success: false, err };
   }
 }

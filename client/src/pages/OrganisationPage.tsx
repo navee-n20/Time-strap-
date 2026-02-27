@@ -21,7 +21,7 @@ import { DEPARTMENT_OPTIONS } from '@shared/schema';
 interface OrganisationPageProps {
   user: User;
 }
-
+                 
 export default function OrganisationPage({ user }: OrganisationPageProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('organisations');
@@ -38,7 +38,7 @@ export default function OrganisationPage({ user }: OrganisationPageProps) {
   const [editingOrg, setEditingOrg] = useState<Organisation | null>(null);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
-  
+    
   // Delete states
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name: string } | null>(null);
   
@@ -50,7 +50,7 @@ export default function OrganisationPage({ user }: OrganisationPageProps) {
   });
 
   const [deptFormData, setDeptFormData] = useState({
-    name: '',
+    name: '',   
     code: '',
     leader: '',
     parentDepartmentId: '',

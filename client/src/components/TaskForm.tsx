@@ -12,8 +12,11 @@ import { useAuth } from '@/context/AuthContext';
 
 interface Task {
   id?: string;
+  pmsId?: string;
+  pmsSubtaskId?: string;
   project: string;
   title: string;
+  keyStep?: string;
   subTask?: string;
   description: string;
   problemAndIssues: string;
@@ -36,19 +39,19 @@ interface TaskFormProps {
 }
 
 const TOOLS_LIST = [
-  'Airtable','Android Studio','Angular','AWS','Azure',
-  'Antigravity','Amazon','Bitbucket','BrowserStack','Calls/Phone',
-  'Canva','ChatGPT','Chrome','Claude','Copilot','Whatsapp','Confluence','CSS','Docker',
-  'Drizzle','Emails','ESLint','Excel','Express','Figma','Firebase','Firefox',
-  'Flutter','Gemini','Git','GitHub','GitLab','Google','Google Calendar','Google Keep',
-  'Google Maps','Google Play Console','Google Tasks','Grafana','GSAP','Heroku','HTML',
-  'Indeed','InVision','JavaScript','Jenkins','Jest','Jira','Kubernetes','LinkedIn','Loom',
-  'Lucide Icons','Meeting Others','Meeting with Teams','Miro','MongoDB','MS Office','MS Teams',
-  'MySQL','Naukri','Netlify','Next.js','Node.js','Notes','Notion','OpenAI','Others','Outlook',
-  'Porter','PostgreSQL','Postman','PPT','Prettier','Prisma','React','Redis','Redux','Safari','Sentry',
-  'Shadcn/UI','Shine','Slack','Storybook','Supabase','Swift','Tailwind CSS','TanStack Query',
-  'TimeChamp','Trello','TypeScript','Unolo','Vercel','Vite','VS Code','Vue','Web Browser','Word',
-  'WorkIndia','Wouter','XCode','Zapier','Zeplin','Zoho Books','Zoho Cliq','Zoho Expenses'
+  'Airtable', 'Android Studio', 'Angular', 'AWS', 'Azure',
+  'Antigravity', 'Amazon', 'Bitbucket', 'BrowserStack', 'Calls/Phone',
+  'Canva', 'ChatGPT', 'Chrome', 'Claude', 'Copilot', 'Whatsapp', 'Confluence', 'CSS', 'Docker',
+  'Drizzle', 'Emails', 'ESLint', 'Excel', 'Express', 'Figma', 'Firebase', 'Firefox',
+  'Flutter', 'Gemini', 'Git', 'GitHub', 'GitLab', 'Google', 'Google Calendar', 'Google Keep',
+  'Google Maps', 'Google Play Console', 'Google Tasks', 'Grafana', 'GSAP', 'Heroku', 'HTML',
+  'Indeed', 'InVision', 'JavaScript', 'Jenkins', 'Jest', 'Jira', 'Kubernetes', 'LinkedIn', 'Loom',
+  'Lucide Icons', 'Meeting Others', 'Meeting with Teams', 'Miro', 'MongoDB', 'MS Office', 'MS Teams',
+  'MySQL', 'Naukri', 'Netlify', 'Next.js', 'Node.js', 'Notes', 'Notion', 'OpenAI', 'Others', 'Outlook',
+  'Porter', 'PostgreSQL', 'Postman', 'PPT', 'Prettier', 'Prisma', 'React', 'Redis', 'Redux', 'Safari', 'Sentry',
+  'Shadcn/UI', 'Shine', 'Slack', 'Storybook', 'Supabase', 'Swift', 'Tailwind CSS', 'TanStack Query',
+  'TimeChamp', 'Trello', 'TypeScript', 'Unolo', 'Vercel', 'Vite', 'VS Code', 'Vue', 'Web Browser', 'Word',
+  'WorkIndia', 'Wouter', 'XCode', 'Zapier', 'Zeplin', 'Zoho Books', 'Zoho Cliq', 'Zoho Expenses'
 ].sort();
 
 /* ✅ NEW – project type (does NOT remove anything) */
@@ -61,6 +64,7 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
   const { user: authUser } = useAuth();
   const [formData, setFormData] = useState<Task>({
     project: task?.project || '',
+    keyStep: (task as any)?.keyStep || '',
     title: task?.title || '',
     subTask: task?.subTask || '',
     description: task?.description || '',
@@ -72,6 +76,8 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
     startTime: task?.startTime || '',
     endTime: task?.endTime || '',
     percentageComplete: task?.percentageComplete || 0,
+    pmsId: task?.pmsId,
+    pmsSubtaskId: (task as any)?.pmsSubtaskId,
   });
 
   const [isRecording, setIsRecording] = useState(false);
@@ -93,11 +99,14 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
   /* ✅ ADDED – subtasks state */
   const [subtasks, setSubtasks] = useState<{ id: string; title: string }[]>([]);
 
+  /* ✅ ADDED – key steps state (from PMS) */
+  const [keySteps, setKeySteps] = useState<{ id: string; name: string }[]>([]);
+
   /* ✅ SAFE FILTER (NO CRASH EVER) */
   const filteredProjects = Array.isArray(projects)
     ? projects.filter(p =>
-        p.project_name?.toLowerCase().includes(projectSearch.toLowerCase())
-      )
+      p.project_name?.toLowerCase().includes(projectSearch.toLowerCase())
+    )
     : [];
 
   useEffect(() => {
@@ -200,6 +209,49 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
     fetchTasks();
   }, [formData.project, projects]);
 
+  // Update pmsId when task changes
+  useEffect(() => {
+    if (formData.title) {
+      const selectedTask = tasks.find(t => t.task_name === formData.title);
+      if (selectedTask && selectedTask.id !== formData.pmsId) {
+        setFormData(prev => ({ ...prev, pmsId: selectedTask.id }));
+      }
+    }
+  }, [formData.title, tasks]);
+
+  /* ✅ ADDED – fetch key steps for project from PMS */
+  useEffect(() => {
+    async function fetchKeySteps() {
+      if (!formData.project) {
+        setKeySteps([]);
+        return;
+      }
+      try {
+        const selectedProject = projects.find(p => p.project_name === formData.project);
+        if (!selectedProject) {
+          setKeySteps([]);
+          return;
+        }
+        const params = new URLSearchParams();
+        params.append('projectId', selectedProject.project_code);
+        if (authUser?.department) params.append('userDepartment', authUser.department);
+        const res = await fetch(`/api/key-steps?${params.toString()}`);
+        const json = await res.json();
+        if (Array.isArray(json)) {
+          // accept both {id,name} or simple strings
+          const mapped = json.map((k: any) => (typeof k === 'string' ? { id: k, name: k } : { id: k.id || k.key || k.name, name: k.name || k.key || String(k) }));
+          setKeySteps(mapped);
+        } else {
+          setKeySteps([]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch key steps:', err);
+        setKeySteps([]);
+      }
+    }
+    fetchKeySteps();
+  }, [formData.project, projects]);
+
   useEffect(() => {
     async function fetchSubtasks() {
       if (!formData.title) {
@@ -288,8 +340,10 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
     const payload: any = { ...formData };
     if (task?.id) payload.id = task.id;
     // include pmsId if present
+    // include pmsId if present
     // @ts-ignore
-    if ((task as any)?.pmsId) payload.pmsId = (task as any).pmsId;
+    if (formData.pmsId) payload.pmsId = formData.pmsId;
+    if (formData.pmsSubtaskId) (payload as any).pmsSubtaskId = formData.pmsSubtaskId;
     onSave(payload);
   };
 
@@ -305,7 +359,7 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
               </Badge>
             )}
           </div>
-          
+
           <div className="flex items-center gap-2">
             {isRecording ? (
               <>
@@ -313,9 +367,9 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
                   <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                   <span className="text-red-400 font-mono text-sm">{formatElapsedTime(elapsedTime)}</span>
                 </div>
-                <Button 
-                  size="sm" 
-                  variant="destructive" 
+                <Button
+                  size="sm"
+                  variant="destructive"
                   onClick={stopRecording}
                   data-testid="button-stop-recording"
                 >
@@ -324,8 +378,8 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
                 </Button>
               </>
             ) : (
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 onClick={startRecording}
                 className="bg-green-600 hover:bg-green-500"
                 data-testid="button-start-recording"
@@ -337,7 +391,7 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
           </div>
         </CardTitle>
       </CardHeader>
-      
+
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {errors.length > 0 && (
@@ -347,43 +401,65 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
               ))}
             </div>
           )}
-          
-          <div className="space-y-2">
-            <Label htmlFor="project" className="text-blue-100">Project *</Label>
-            <Select 
-              value={formData.project} 
-              onValueChange={(v) => setFormData({ ...formData, project: v, title: '', subTask: '' })}
-            >
-              <SelectTrigger className="bg-slate-700/50 border-blue-500/20 text-white" data-testid="select-project">
-                <SelectValue placeholder="Select a project" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[300px]">
-                <div className="flex items-center px-3 pb-2 pt-1 border-b border-blue-500/10">
-                  <Search className="w-3.5 h-3.5 text-blue-400/50 mr-2" />
-                  <input 
-                    className="flex-1 bg-transparent border-none outline-none text-xs text-white placeholder:text-blue-400/30"
-                    placeholder="Search projects..."
-                    value={projectSearch}
-                    onChange={(e) => setProjectSearch(e.target.value)}
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                </div>
-                {filteredProjects.length > 0 ? (
-                  filteredProjects.map(p => (
-                    <SelectItem key={p.project_code} value={p.project_name}>{p.project_name}</SelectItem>
-                  ))
-                ) : (
-                  <div className="py-2 px-8 text-xs text-blue-400/40 italic">No projects found</div>
-                )}
-              </SelectContent>
-            </Select>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="project" className="text-blue-100">Project *</Label>
+              <Select
+                value={formData.project}
+                onValueChange={(v) => setFormData({ ...formData, project: v, title: '', subTask: '' })}
+              >
+                <SelectTrigger className="bg-slate-700/50 border-blue-500/20 text-white" data-testid="select-project">
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  <div className="flex items-center px-3 pb-2 pt-1 border-b border-blue-500/10">
+                    <Search className="w-3.5 h-3.5 text-blue-400/50 mr-2" />
+                    <input
+                      className="flex-1 bg-transparent border-none outline-none text-xs text-white placeholder:text-blue-400/30"
+                      placeholder="Search projects..."
+                      value={projectSearch}
+                      onChange={(e) => setProjectSearch(e.target.value)}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  {filteredProjects.length > 0 ? (
+                    filteredProjects.map(p => (
+                      <SelectItem key={p.project_code} value={p.project_name}>{p.project_name}</SelectItem>
+                    ))
+                  ) : (
+                    <div className="py-2 px-8 text-xs text-blue-400/40 italic">No projects found</div>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="keyStep" className="text-blue-100">Key Step</Label>
+              <Select
+                value={(formData as any).keyStep || ''}
+                onValueChange={(v) => setFormData({ ...formData, keyStep: v })}
+              >
+                <SelectTrigger className="bg-slate-700/50 border-blue-500/20 text-white" data-testid="select-keystep">
+                  <SelectValue placeholder="Select key step" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {keySteps.length === 0 && (
+                    <div className="py-2 px-8 text-xs text-blue-400/40 italic">No key steps found for this project</div>
+                  )}
+                  {keySteps.map(k => (
+                    <SelectItem key={k.id} value={k.name}>{k.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="title" className="text-blue-100">Task *</Label>
-              <Select 
-                value={formData.title} 
+              <Select
+                value={formData.title}
                 onValueChange={(v) => setFormData({ ...formData, title: v, subTask: '' })}
               >
                 <SelectTrigger className="bg-slate-700/50 border-blue-500/20 text-white" data-testid="select-task">
@@ -402,12 +478,19 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="subTask" className="text-blue-100">Sub Task</Label>
               <Select
                 value={formData.subTask}
-                onValueChange={(value) => setFormData({ ...formData, subTask: value })}
+                onValueChange={(value) => {
+                  const selected = subtasks.find(s => s.title === value);
+                  setFormData({
+                    ...formData,
+                    subTask: value,
+                    pmsSubtaskId: selected?.id
+                  });
+                }}
                 data-testid="select-subtask"
               >
                 <SelectTrigger className="bg-slate-700/50 border-blue-500/20 text-white">
@@ -427,7 +510,7 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
               </Select>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="quantify" className="text-blue-100">Quantify Your Result *</Label>
@@ -440,7 +523,7 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
                 data-testid="input-quantify"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="achievements" className="text-blue-100">Achievements</Label>
               <Input
@@ -479,7 +562,7 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
               />
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="description" className="text-blue-100">
               Description <span className="text-blue-400/60 text-xs">(optional, max 35 words)</span>
@@ -518,7 +601,7 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="endTime" className="text-blue-100">End Time (IST) *</Label>
               <div className="relative">
@@ -533,7 +616,7 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="percentage" className="text-blue-100">Completion %</Label>
               <div className="flex items-center space-x-2">
@@ -570,7 +653,7 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
               </div>
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <Label className="text-blue-100">Tools Used</Label>
             <Command className="bg-slate-700/30 border border-blue-500/10 rounded-md">
@@ -590,11 +673,10 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
                     <CommandItem
                       key={tool}
                       onSelect={() => { toggleTool(tool); setToolSearch(''); }}
-                      className={`cursor-pointer ${
-                        formData.toolsUsed.includes(tool)
-                          ? 'bg-blue-500/20 text-blue-300'
-                          : 'text-slate-300 hover:bg-slate-600/50'
-                      }`}
+                      className={`cursor-pointer ${formData.toolsUsed.includes(tool)
+                        ? 'bg-blue-500/20 text-blue-300'
+                        : 'text-slate-300 hover:bg-slate-600/50'
+                        }`}
                       data-testid={`command-tool-${tool.toLowerCase().replace(/\s+/g, '-')}`}
                     >
                       <Check className={`w-4 h-4 mr-2 ${formData.toolsUsed.includes(tool) ? 'opacity-100' : 'opacity-0'}`} />
@@ -621,11 +703,11 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
               </div>
             )}
           </div>
-          
+
           <div className="flex justify-end gap-3 pt-4">
-            <Button 
-              type="button" 
-              variant="outline" 
+            <Button
+              type="button"
+              variant="outline"
               onClick={onCancel}
               className="border-slate-600 text-slate-300"
               data-testid="button-cancel"
@@ -633,7 +715,7 @@ export default function TaskForm({ task, onSave, onCancel, user }: TaskFormProps
               <X className="w-4 h-4 mr-2" />
               Cancel
             </Button>
-            <Button 
+            <Button
               type="submit"
               className="bg-gradient-to-r from-blue-600 to-cyan-600"
               data-testid="button-save-task"

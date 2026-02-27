@@ -7,7 +7,7 @@ import { Mail, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface ForgotPasswordModalProps {
   open: boolean;
-  onClose: () => void;
+  onClose: () => void;    
 }
 
 export default function ForgotPasswordModal({ open, onClose }: ForgotPasswordModalProps) {
@@ -36,7 +36,7 @@ export default function ForgotPasswordModal({ open, onClose }: ForgotPasswordMod
     setMessage('');
     onClose();
   };
-
+  
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="bg-slate-900 border-blue-500/20 max-w-md">
@@ -48,14 +48,14 @@ export default function ForgotPasswordModal({ open, onClose }: ForgotPasswordMod
           <DialogDescription className="text-blue-200/60">
             Enter your employee code and registered email to receive a password reset link.
           </DialogDescription>
-        </DialogHeader>
+        </DialogHeader>     
         
         {status === 'idle' ? (
           <form onSubmit={handleSubmit} className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="reset-code" className="text-blue-100">Employee Code</Label>
               <Input
-                id="reset-code"
+                id="reset-code"   
                 placeholder="EMP001"
                 value={employeeCode}
                 onChange={(e) => setEmployeeCode(e.target.value)}
@@ -103,7 +103,7 @@ export default function ForgotPasswordModal({ open, onClose }: ForgotPasswordMod
                   'Send Reset Link'
                 )}
               </Button>
-            </DialogFooter>
+            </DialogFooter>          
           </form>
         ) : status === 'success' ? (
           <div className="py-8 text-center">
@@ -120,9 +120,9 @@ export default function ForgotPasswordModal({ open, onClose }: ForgotPasswordMod
             <p className="text-white mb-2">Error</p>
             <p className="text-red-400/80 text-sm mb-6">{message}</p>
             <Button onClick={() => setStatus('idle')} variant="outline" className="border-slate-600">
-              Try Again
+              Try Again   
             </Button>
-          </div>
+          </div>   
         )}
       </DialogContent>
     </Dialog>

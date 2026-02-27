@@ -21,7 +21,7 @@ async function checkDatabase() {
       SELECT table_name FROM information_schema.tables 
       WHERE table_schema = 'public'
       ORDER BY table_name
-    `);
+    `);  
     
     console.log('📋 Available tables:');
     tablesResult.rows.forEach((row: any) => {
@@ -31,13 +31,13 @@ async function checkDatabase() {
     // For each table, get column info
     console.log('\n📊 Table structures:');
     for (const row of tablesResult.rows) {
-      const tableName = row.table_name;
+      const tableName = row.table_name;    
       const colResult = await pmsPool.query(`
         SELECT column_name, data_type FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = $1
-        ORDER BY ordinal_position
-      `, [tableName]);
-      
+        ORDER BY ordinal_position                                    
+      `, [tableName]); 
+                             
       console.log(`\n${tableName}:`);
       colResult.rows.forEach((col: any) => {
         console.log(`  - ${col.column_name} (${col.data_type})`);

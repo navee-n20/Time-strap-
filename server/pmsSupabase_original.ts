@@ -118,7 +118,7 @@ export const getProjects = async (userRole?: string, userEmpCode?: string, userD
             console.log(`❌ Table '${tableName}' error: ${altError.message}`);
           }
         } catch (altErr) {
-          console.log(`💥 Exception checking table '${tableName}': ${altErr.message}`);
+          console.log(`💥 Exception checking tasks table '${tableName}': ${(altErr as any).message}`);
         }
       }
 
@@ -186,7 +186,7 @@ export const getTasks = async (projectId?: string, userDepartment?: string): Pro
             console.log(`❌ Tasks table '${tableName}' error: ${altError.message}`);
           }
         } catch (altErr) {
-          console.log(`💥 Exception checking tasks table '${tableName}': ${altErr.message}`);
+          console.log(`💥 Exception checking tasks table '${tableName}': ${(altErr as any).message}`);
         }
       }
 
@@ -231,7 +231,7 @@ export const getTasksByProject = async (projectCode: string, userDepartment?: st
             console.log(`❌ Tasks table '${tableName}' error: ${altError.message}`);
           }
         } catch (altErr) {
-          console.log(`💥 Exception checking tasks table '${tableName}': ${altErr.message}`);
+          console.log(`💥 Exception checking tasks table '${tableName}': ${(altErr as any).message}`);
         }
       }
 

@@ -1,25 +1,26 @@
 import { Link, useLocation } from 'wouter';
-import { 
-  Sidebar, 
-  SidebarContent, 
-  SidebarGroup, 
-  SidebarGroupContent, 
-  SidebarMenu, 
-  SidebarMenuButton, 
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter
 } from '@/components/ui/sidebar';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Clock, 
-  CheckSquare, 
-  Users, 
-  Building2, 
+import {
+  Clock,
+  CheckSquare,
+  Users,
+  Building2,
   BarChart3,
   UserPlus,
   Shield,
-  FileText
+  FileText,
+  CalendarClock
 } from 'lucide-react';
 import { UserRole } from '@/context/AuthContext';
 import logoImage from '@assets/WhatsApp_Image_2025-11-11_at_11.06.02_AM_1765464690595.jpeg';
@@ -42,20 +43,21 @@ export default function AppSidebar({ userRole, pendingApprovals = 0, collapsed =
     { title: 'Organisation', url: '/organisation', icon: Building2, roles: ['admin'] as UserRole[] },
     { title: 'Users', url: '/users', icon: UserPlus, roles: ['admin'] as UserRole[] },
     { title: 'Administration', url: '/admin', icon: Shield, roles: ['admin'] as UserRole[] },
+    { title: 'Postponements', url: '/admin/postponements', icon: CalendarClock, roles: ['admin'] as UserRole[] },
   ];
 
   const visibleItems = allMenuItems.filter(item => item.roles.includes(userRole));
 
   return (
-    <Sidebar 
+    <Sidebar
       className="border-r border-slate-700 bg-slate-900"
       collapsible="icon"
     >
       <SidebarHeader className={`p-4 border-b border-slate-700 ${collapsed ? 'px-2' : ''}`}>
         <div className="flex items-center gap-3">
-          <img 
-            src={logoImage} 
-            alt="Time Strap" 
+          <img
+            src={logoImage}
+            alt="Time Strap"
             className={`object-contain ${collapsed ? 'h-8 w-8' : 'h-9'}`}
             data-testid="sidebar-logo"
           />
@@ -66,22 +68,21 @@ export default function AppSidebar({ userRole, pendingApprovals = 0, collapsed =
           )}
         </div>
       </SidebarHeader>
-      
+
       <SidebarContent className="py-2">
         <SidebarGroup>
           <SidebarGroupContent>
-            <SidebarMenu>                
+            <SidebarMenu>
               {visibleItems.map((item) => {
                 const isActive = location === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
-                      className={`mx-2 rounded-md transition-colors ${
-                        isActive 
-                          ? 'bg-blue-600 text-white' 
-                          : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                      } ${collapsed ? 'justify-center px-2' : 'px-3 py-2'}`}
+                    <SidebarMenuButton
+                      asChild
+                      className={`mx-2 rounded-md transition-colors ${isActive
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                        } ${collapsed ? 'justify-center px-2' : 'px-3 py-2'}`}
                       tooltip={collapsed ? item.title : undefined}
                     >
                       <Link href={item.url} data-testid={`nav-${item.title.toLowerCase()}`}>
@@ -105,7 +106,7 @@ export default function AppSidebar({ userRole, pendingApprovals = 0, collapsed =
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      
+
       <SidebarFooter className={`border-t border-slate-700 ${collapsed ? 'p-2' : 'p-3'}`}>
         {!collapsed && (
           <p className="text-xs text-slate-500 text-center">

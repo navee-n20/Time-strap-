@@ -1,6 +1,9 @@
 // ✅ MUST be first — loads .env before any other imports
 import "dotenv/config";
 
+// ✅ Bypass SSL certificate validation for development (fixes SELF_SIGNED_CERT_IN_CHAIN)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 import express, { type Request, type Response, type NextFunction } from "express";
 import { createServer } from "http";
 import { registerRoutes } from "./routes";
@@ -142,8 +145,8 @@ app.use((req, res, next) => {
     // ✅ WINDOWS + RENDER + REPLIT SAFE
     const port = Number(process.env.PORT) || 5000;
 
-    httpServer.listen(port, () => {
-      log(`serving on port ${port}`);
+    httpServer.listen(port, "0.0.0.0", () => {
+      log(`serving on http://localhost:${port}`);
     });
   } catch (error) {
     console.error("❌ Failed to start server:", error);

@@ -18,6 +18,8 @@ import OrganisationPage from '@/pages/OrganisationPage';
 import UsersPage from '@/pages/UsersPage';
 import AdminPage from '@/pages/AdminPage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
+import TaskEntryPage from '@/pages/TaskEntryPage';
+import PostponementsPage from '@/pages/admin/PostponementsPage';
 import NotFound from '@/pages/not-found';
 import type { TimeEntry } from '@shared/schema';
 
@@ -25,7 +27,7 @@ function AuthenticatedApp() {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  
+
   const sidebarStyle = {
     "--sidebar-width": "14rem",
     "--sidebar-width-icon": "3.5rem",
@@ -42,23 +44,23 @@ function AuthenticatedApp() {
   if (!user) return null;
 
   return (
-    <SidebarProvider 
+    <SidebarProvider
       style={sidebarStyle as React.CSSProperties}
       defaultOpen={true}
       open={sidebarOpen}
       onOpenChange={setSidebarOpen}
     >
       <div className="flex h-screen w-full bg-slate-950">
-        <AppSidebar 
-          userRole={user.role} 
-          pendingApprovals={pendingCount} 
+        <AppSidebar
+          userRole={user.role}
+          pendingApprovals={pendingCount}
           collapsed={!sidebarOpen}
           onToggle={() => setSidebarOpen(!sidebarOpen)}
         />
-        
+
         <div className="flex flex-col flex-1 overflow-hidden">
-          <AppHeader 
-            user={user} 
+          <AppHeader
+            user={user}
             onLogout={logout}
             selectedDate={new Date()}
             showDatePicker={location === '/tracker'}
@@ -74,6 +76,12 @@ function AuthenticatedApp() {
               </Route>
               <Route path="/analytics">
                 <AnalyticsPage user={user} />
+              </Route>
+              <Route path="/task-entry">
+                <TaskEntryPage />
+              </Route>
+              <Route path="/task-entry/:id">
+                <TaskEntryPage />
               </Route>
               {(user.role === 'manager' || user.role === 'hr' || user.role === 'admin') && (
                 <Route path="/approvals">
@@ -93,6 +101,9 @@ function AuthenticatedApp() {
                   </Route>
                   <Route path="/admin">
                     <AdminPage user={user} />
+                  </Route>
+                  <Route path="/admin/postponements">
+                    <PostponementsPage />
                   </Route>
                 </>
               )}
@@ -124,14 +135,14 @@ function AppContent() {
 
   return (
     <>
-      <LoginCard 
+      <LoginCard
         onLogin={login}
         onForgotPassword={() => setShowForgotPassword(true)}
         isLoading={isLoading}
       />
-      <ForgotPasswordModal 
-        open={showForgotPassword} 
-        onClose={() => setShowForgotPassword(false)} 
+      <ForgotPasswordModal
+        open={showForgotPassword}
+        onClose={() => setShowForgotPassword(false)}
       />
     </>
   );

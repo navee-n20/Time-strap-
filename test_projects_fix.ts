@@ -41,7 +41,7 @@ const normalizeDepartment = (dept: string): string => {
     // include singular presale form as well
     'presale': 'presales',
     'presales': 'presales',
-    'pre-sales': 'presales',
+    'pre-sales': 'presales',  
     'it support': 'it',
     'support': 'it'
   };
@@ -52,7 +52,7 @@ const normalizeDepartment = (dept: string): string => {
 const isDepartmentMatch = (userDept: string, projectDept: string): boolean => {
   return normalizeDepartment(userDept) === normalizeDepartment(projectDept);
 };
-
+                
 async function testGetProjects() {
   try {
     console.log('🧪 Testing PMS getProjects with departments\n');
@@ -61,9 +61,9 @@ async function testGetProjects() {
     const projectsResult = await pmsPool.query(`
       SELECT 
         p.id,
-        p.title as project_name,
+        p.title as project_name,        
         p.project_code,
-        p.client_name,
+        p.client_name,  
         p.description,
         p.status,
         p.start_date,
@@ -71,7 +71,7 @@ async function testGetProjects() {
         p.progress as progress_percentage,
         p.created_at,
         p.updated_at
-      FROM projects p
+      FROM projects p    
       ORDER BY p.title
     `);
 
@@ -85,8 +85,8 @@ async function testGetProjects() {
     // Map departments to projects
     const projectDepts: Record<string, string[]> = {};
     deptResult.rows.forEach((row: any) => {
-      const projId = row.project_id;
-      if (!projectDepts[projId]) {
+      const projId = row.project_id;  
+      if (!projectDepts[projId]) {     
         projectDepts[projId] = [];
       }
       projectDepts[projId].push(row.department);
@@ -103,10 +103,10 @@ async function testGetProjects() {
     enrichedProjects.forEach((project: any) => {
       console.log(`📌 ${project.project_name} (${project.project_code})`);
       console.log(`   Departments: ${Array.isArray(project.department) ? project.department.join(', ') : 'none'}`);
-      console.log();
+      console.log();   
     });
-
-    // Test filtering
+    
+    // Test filtering    
     console.log('\n\n🔍 Testing department filtering:\n');
     
     const testDepts = ['Software Developers', 'software', 'HR', 'Purchase', 'IT Support', 'Presales', 'presale'];
@@ -120,25 +120,26 @@ async function testGetProjects() {
           projectDepts = project.department;
         } else if (typeof project.department === 'string') {
           projectDepts = [project.department];
-        }
+        }         
 
         const isMatch = projectDepts.some(dept => isDepartmentMatch(userDept, dept));
-        
+           
         if (isMatch) {
           console.log(`  ✅ ${project.project_name} - matches dept: ${projectDepts.join(', ')}`);
         }
         
         return isMatch;
       });
-      
+                      
       console.log(`  Total matching: ${filtered.length} projects\n`);
     });
 
   } catch (err) {
     console.error('💥 Error:', err);
-  } finally {
+  } finally {  
     await pmsPool.end();
   }
-}
-
-testGetProjects();
+}      
+  
+testGetProjects();    
+               

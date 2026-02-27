@@ -137,6 +137,7 @@ export type Subtask = typeof subtasks.$inferSelect;
 export const taskPostponements = pgTable("task_postponements", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   taskId: varchar("task_id").notNull(),
+  taskName: text("task_name"),
   previousDueDate: text("previous_due_date"),
   newDueDate: text("new_due_date").notNull(),
   reason: text("reason").notNull(),
@@ -190,7 +191,10 @@ export const timeEntries = pgTable("time_entries", {
   endTime: text("end_time").notNull(),
   totalHours: text("total_hours").notNull(),
   percentageComplete: integer("percentage_complete").default(0),
+  pmsId: text("pms_id"),
+  pmsSubtaskId: text("pms_subtask_id"),
   status: text("status").default("pending"),
+  managerApproved: boolean("manager_approved").default(false),
   approvedBy: varchar("approved_by"),
   approvedAt: timestamp("approved_at"),
   managerApprovedBy: varchar("manager_approved_by"),

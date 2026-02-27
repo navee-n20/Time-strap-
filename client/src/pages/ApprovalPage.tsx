@@ -62,9 +62,9 @@ const parseTaskDescription = (taskDesc: string, entry?: ExtendedTimeEntry) => {
     }
   }
 
-  return { 
-    task: task.trim(), 
-    subTask: subTask.trim(), 
+  return {
+    task: task.trim(),
+    subTask: subTask.trim(),
     description: description.trim(),
     achievements: entry?.achievements,
     quantify: entry?.quantify || "",
@@ -144,7 +144,7 @@ export default function ApprovalPage({ user }: { user: User }) {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: async ({ id, reason }: { id: string; reason: string }) => 
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) =>
       apiRequest('PATCH', `/api/time-entries/${id}/reject`, { approvedBy: user.id, reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/time-entries'] });
@@ -154,8 +154,8 @@ export default function ApprovalPage({ user }: { user: User }) {
 
   const bulkApproveMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      await Promise.all(ids.map(id => 
-        user.role === 'admin' 
+      await Promise.all(ids.map(id =>
+        user.role === 'admin'
           ? apiRequest('PATCH', `/api/time-entries/${id}/approve`, { approvedBy: user.id })
           : apiRequest('PATCH', `/api/time-entries/${id}/manager-approve`, { approvedBy: user.id })
       ));
@@ -186,10 +186,10 @@ export default function ApprovalPage({ user }: { user: User }) {
 
   const filteredSubmissions = useMemo(() => {
     const filtered = uniqueTimeEntries.filter(s => {
-      const matchesSearch = s.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                           s.employeeCode.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = s.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.employeeCode.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
-      const matchesDate = !selectedDate || format(parseISO(s.submittedAt.toString()), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
+      const matchesDate = !selectedDate || s.date === format(selectedDate, 'yyyy-MM-dd');
       return matchesSearch && matchesStatus && matchesDate;
     });
 
@@ -203,12 +203,12 @@ export default function ApprovalPage({ user }: { user: User }) {
     // then order employees by their most recent submission (descending)
     const groups: Record<string, ExtendedTimeEntry[]> = {};
     for (const e of filtered) {
-      const key = (e.employeeName || 'Unknown').toString();
+      const key = e.employeeId.toString();
       groups[key] = groups[key] || [];
       groups[key].push(e);
     }
 
-    const groupedArray = Object.entries(groups).map(([name, entries]) => {
+    const groupedArray = Object.entries(groups).map(([employeeId, entries]) => {
       // sort individual's entries by date then startTime
       entries.sort((a, b) => {
         const dateA = a.date ? startOfDay(parseISO(a.date.toString())).getTime() : 0;
@@ -223,7 +223,7 @@ export default function ApprovalPage({ user }: { user: User }) {
         return Math.max(max, t);
       }, 0);
 
-      return { name, entries, latest };
+      return { employeeId, entries, latest };
     });
 
     // sort groups by latest submission desc so recent submitters appear first
@@ -282,7 +282,7 @@ export default function ApprovalPage({ user }: { user: User }) {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => refetch()} className="bg-slate-800 border-blue-500/20 text-blue-300">
-            <RefreshCw className="w-4 h-4 mr-2"/>
+            <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>
         </div>
@@ -317,8 +317,8 @@ export default function ApprovalPage({ user }: { user: User }) {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400/60" />
-            <Input 
-              placeholder="Search employee..." 
+            <Input
+              placeholder="Search employee..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 bg-slate-900/50 border-blue-500/20 text-white h-9"
@@ -361,7 +361,7 @@ export default function ApprovalPage({ user }: { user: User }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <Checkbox 
+            <Checkbox
               checked={selectAll}
               onCheckedChange={toggleSelectAll}
               className="border-blue-500/30"
@@ -369,9 +369,9 @@ export default function ApprovalPage({ user }: { user: User }) {
             <span className="text-xs text-blue-400">Select All</span>
           </div>
 
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => {
               setSearchQuery('');
               setStatusFilter('all');
@@ -453,24 +453,23 @@ export default function ApprovalPage({ user }: { user: User }) {
                       <h3 className="text-base text-white font-semibold leading-none">{entry.employeeName}</h3>
                       <p className="text-[10px] text-blue-400/60 mt-1 uppercase font-bold">{entry.employeeCode}</p>
                       <div className="flex gap-2 mt-2 flex-wrap">
-                         <span className="flex items-center text-xs text-green-400 font-bold bg-green-500/15 px-2 py-1 rounded-md border border-green-500/20">
-                           <CalendarIcon className="w-3 h-3 mr-1.5" /> {format(parseISO(entry.date?.toString() || new Date().toISOString()), 'MMM dd, yyyy')}
-                         </span>
-                         <span className="flex items-center text-xs text-blue-400 font-bold bg-blue-500/15 px-2 py-1 rounded-md border border-blue-500/20">
-                           <Clock className="w-3 h-3 mr-1.5" /> {entry.startTime} - {entry.endTime}
-                         </span>
-                         <span className="flex items-center text-xs text-purple-400 font-bold bg-purple-500/15 px-2 py-1 rounded-md border border-purple-500/20">
-                           <Target className="w-3 h-3 mr-1.5" /> {entry.percentageComplete}% Complete
-                         </span>
+                        <span className="flex items-center text-xs text-green-400 font-bold bg-green-500/15 px-2 py-1 rounded-md border border-green-500/20">
+                          <CalendarIcon className="w-3 h-3 mr-1.5" /> {format(parseISO(entry.date?.toString() || new Date().toISOString()), 'MMM dd, yyyy')}
+                        </span>
+                        <span className="flex items-center text-xs text-blue-400 font-bold bg-blue-500/15 px-2 py-1 rounded-md border border-blue-500/20">
+                          <Clock className="w-3 h-3 mr-1.5" /> {entry.startTime} - {entry.endTime}
+                        </span>
+                        <span className="flex items-center text-xs text-purple-400 font-bold bg-purple-500/15 px-2 py-1 rounded-md border border-purple-500/20">
+                          <Target className="w-3 h-3 mr-1.5" /> {entry.percentageComplete}% Complete
+                        </span>
                       </div>
                     </div>
                   </div>
-                  <Badge className={`uppercase text-[10px] px-2 py-0.5 ${
-                    entry.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
-                    entry.status === 'approved' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
-                    entry.status === 'manager_approved' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
-                    'bg-red-500/20 text-red-400 border-red-500/30'
-                  } border`}>
+                  <Badge className={`uppercase text-[10px] px-2 py-0.5 ${entry.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                      entry.status === 'approved' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                        entry.status === 'manager_approved' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
+                          'bg-red-500/20 text-red-400 border-red-500/30'
+                    } border`}>
                     {entry.status ? entry.status.replace('_', ' ') : 'pending'}
                   </Badge>
                 </div>
@@ -507,7 +506,7 @@ export default function ApprovalPage({ user }: { user: User }) {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="bg-cyan-500/5 p-3 rounded-lg border border-cyan-500/10">
                         <span className="text-cyan-400 font-bold uppercase text-[9px] block mb-2 flex items-center gap-1">
-                          <Wrench className="w-3 h-3"/> Tools Used
+                          <Wrench className="w-3 h-3" /> Tools Used
                         </span>
                         <div className="flex flex-wrap gap-2 mt-1">
                           {entry.toolsUsed && entry.toolsUsed.length > 0 ? (
@@ -528,10 +527,10 @@ export default function ApprovalPage({ user }: { user: User }) {
 
                 {/* Action Buttons */}
                 <div className="flex justify-between items-center mt-4 pt-3 border-t border-blue-500/10">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => setExpandedId(isExpanded ? null : entry.id.toString())} 
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setExpandedId(isExpanded ? null : entry.id.toString())}
                     className="h-8 text-xs text-blue-400 hover:bg-blue-500/5"
                   >
                     {isExpanded ? (
@@ -540,21 +539,21 @@ export default function ApprovalPage({ user }: { user: User }) {
                       <><ChevronDown className="w-3.5 h-3.5 mr-1.5" /> View Details</>
                     )}
                   </Button>
-                  
+
                   {entry.status !== 'approved' && entry.status !== 'rejected' && (
                     <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="destructive" 
-                        className="h-8 text-xs px-4" 
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-8 text-xs px-4"
                         onClick={() => { setSelectedEntry(entry); setRejectDialogOpen(true); }}
                       >
                         <X className="w-3.5 h-3.5 mr-1.5" />
                         Reject
                       </Button>
-                      <Button 
-                        size="sm" 
-                        className="h-8 text-xs px-4 bg-blue-600 hover:bg-blue-500" 
+                      <Button
+                        size="sm"
+                        className="h-8 text-xs px-4 bg-blue-600 hover:bg-blue-500"
                         onClick={() => user.role === 'admin' ? approveMutation.mutate(entry.id.toString()) : managerApproveMutation.mutate(entry.id.toString())}
                       >
                         <Check className="w-3.5 h-3.5 mr-1.5" />
@@ -577,11 +576,11 @@ export default function ApprovalPage({ user }: { user: User }) {
               Please provide a reason for rejecting this timesheet entry.
             </DialogDescription>
           </DialogHeader>
-          <Textarea 
-            placeholder="Rejection reason..." 
-            value={rejectionReason} 
-            onChange={(e) => setRejectionReason(e.target.value)} 
-            className="bg-slate-800 border-blue-500/20 text-white min-h-[120px] focus:ring-blue-500/50" 
+          <Textarea
+            placeholder="Rejection reason..."
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+            className="bg-slate-800 border-blue-500/20 text-white min-h-[120px] focus:ring-blue-500/50"
           />
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="ghost" size="sm" onClick={() => { setRejectDialogOpen(false); setRejectionReason(''); }}>Cancel</Button>
@@ -601,11 +600,11 @@ export default function ApprovalPage({ user }: { user: User }) {
               Provide a reason for rejecting {selectedIds.size} selected timesheet entries.
             </DialogDescription>
           </DialogHeader>
-          <Textarea 
-            placeholder="Rejection reason..." 
-            value={rejectionReason} 
-            onChange={(e) => setRejectionReason(e.target.value)} 
-            className="bg-slate-800 border-blue-500/20 text-white min-h-[120px] focus:ring-blue-500/50" 
+          <Textarea
+            placeholder="Rejection reason..."
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+            className="bg-slate-800 border-blue-500/20 text-white min-h-[120px] focus:ring-blue-500/50"
           />
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="ghost" size="sm" onClick={() => { setBulkRejectDialogOpen(false); setRejectionReason(''); }}>Cancel</Button>

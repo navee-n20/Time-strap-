@@ -78,7 +78,7 @@ export default function AnalyticsPage({ user }: AnalyticsPageProps) {
     const totalMinutes = filteredEntries.reduce((acc, entry) => acc + parseDuration(entry.totalHours), 0);
     
     const taskMap = new Map<string, number>();
-    filteredEntries.forEach(entry => {
+    filteredEntries.forEach(entry => {  
       const taskName = entry.projectName || 'Other';
       const minutes = parseDuration(entry.totalHours);
       taskMap.set(taskName, (taskMap.get(taskName) || 0) + minutes);
@@ -124,9 +124,9 @@ export default function AnalyticsPage({ user }: AnalyticsPageProps) {
       hourlyProductivity,
     };
   }, [filteredEntries]);
-
+               
   const stats = useMemo(() => {
-    const totalMinutes = analyticsData.productiveMinutes;
+    const totalMinutes = analyticsData.productiveMinutes;                                     
     const taskCount = filteredEntries.filter(e => e.status === 'approved').length;
     const totalEntries = filteredEntries.length;
     

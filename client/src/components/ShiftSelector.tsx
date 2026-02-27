@@ -96,11 +96,12 @@ export default function ShiftSelector({
       <Card className="bg-slate-800/50 border-blue-500/20 p-4 flex items-center justify-center">
         <Button
           onClick={onFinalSubmit}
-          disabled={!canSubmit}
+          // button remains clickable even when `canSubmit` is false; submission handler
+          // will open the pending-deadline dialog or show validation messages as needed.
           className={`w-full ${
             canSubmit 
               ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500' 
-              : 'bg-slate-700 text-slate-400'
+              : 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-50'
           }`}
           data-testid="button-final-submit"
         >

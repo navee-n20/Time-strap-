@@ -1,16 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Calendar as CalendarIcon, ChevronDown, ChevronUp, Loader2, Send, Download, FileSpreadsheet, CheckCircle, Mail, Clock, Zap, AlertCircle, Settings } from 'lucide-react';
-import TaskForm from '@/components/TaskForm';
 import TaskTable, { Task } from '@/components/TaskTable';
 import ShiftSelector from '@/components/ShiftSelector';
 import AnalyticsPanel from '@/components/AnalyticsPanel';
 import { User } from '@/context/AuthContext';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { format } from 'date-fns';
@@ -21,17 +23,45 @@ interface TrackerPageProps {
   user: User;
 }
 
+// Structure returned by /api/pending-deadline-tasks
+interface PendingDeadlineTask {
+  id: string;
+  task_name: string;
+  projectName: string;
+  isAssignedToEmployee: boolean;
+  end_date?: string | null;
+  start_date?: string | null;
+  projectCode?: string;
+}
+
+const formatDuration = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h ${mins}m`;
+};
+
+const formatTaskDescription = (task: any) => {
+  let desc = task.title;
+  if (task.subTask) desc += ' | ' + task.subTask;
+  else desc += ' | ';
+  if (task.description) desc += ' | ' + task.description;
+  return desc;
+};
+
 export default function TrackerPage({ user }: TrackerPageProps) {
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [shiftHours, setShiftHours] = useState<4 | 8 | 12>(8);
-  const [showTaskForm, setShowTaskForm] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [, setLocation] = useLocation();
   const [showAnalytics, setShowAnalytics] = useState(true);
   const [showSubmissionConfirm, setShowSubmissionConfirm] = useState(false);
   const [submittedTasks, setSubmittedTasks] = useState<Task[]>([]);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [blockUnassignedTasks, setBlockUnassignedTasks] = useState(false);
+  const [projectFilter, setProjectFilter] = useState('');
+  const [taskFilter, setTaskFilter] = useState('');
+  const [startDateFilter, setStartDateFilter] = useState('');
+  const [endDateFilter, setEndDateFilter] = useState('');
 
   // Fetch timesheet blocking settings
   const { data: blockingSettings } = useQuery({
@@ -87,6 +117,9 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       return [];
     }
   });
+
+  // Tasks fetched from PMS that are due today but not yet added to timesheet
+  const [pendingDeadlineTasks, setPendingDeadlineTasks] = useState<PendingDeadlineTask[]>([]);
 
   // Persist pendingTasks to localStorage whenever they change
   const updatePendingTasks = (newTasks: Task[]) => {
@@ -173,6 +206,8 @@ export default function TrackerPage({ user }: TrackerPageProps) {
         endTime: task.endTime,
         totalHours: formatDuration(task.durationMinutes),
         percentageComplete: task.percentageComplete,
+        pmsId: task.pmsId,
+        pmsSubtaskId: (task as any).pmsSubtaskId,
         status: 'pending',
       });
       return response.json();
@@ -261,7 +296,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   };
 
   // Combine pending tasks with submitted entries for display
-  const allTasks: Task[] = [
+  const allTasks: Task[] = useMemo(() => [
     // Convert server entries to Task format
     ...todaysEntries.map(entry => {
       const parsed = parseTaskDescription(entry.taskDescription);
@@ -280,89 +315,121 @@ export default function TrackerPage({ user }: TrackerPageProps) {
         endTime: entry.endTime,
         durationMinutes: parseDuration(entry.totalHours),
         percentageComplete: entry.percentageComplete ?? 0,
+        pmsId: entry.pmsId || undefined,
+        pmsSubtaskId: entry.pmsSubtaskId || undefined,
         isComplete: entry.status === 'approved',
         serverStatus: entry.status as Task['serverStatus'],
       };
     }),
     // Add pending local tasks
     ...pendingTasks.map(t => ({ ...t, serverStatus: 'draft' as const })),
-  ];
+  ], [todaysEntries, pendingTasks]);
+
+  // Apply filters to tasks
+  const filteredAllTasks = useMemo(() => {
+    return allTasks.filter(task => {
+      const matchesProject = task.project.toLowerCase().includes(projectFilter.toLowerCase());
+      const matchesTask = task.title.toLowerCase().includes(taskFilter.toLowerCase()) ||
+        (task.description || '').toLowerCase().includes(taskFilter.toLowerCase());
+      return matchesProject && matchesTask;
+    });
+  }, [allTasks, projectFilter, taskFilter]);
+
+  const filteredAvailableTasks = useMemo(() => {
+    return availableTasks.filter(task => {
+      const matchesProject = task.projectName.toLowerCase().includes(projectFilter.toLowerCase());
+      const matchesTask = task.task_name.toLowerCase().includes(taskFilter.toLowerCase()) ||
+        (task.description || '').toLowerCase().includes(taskFilter.toLowerCase());
+      return matchesProject && matchesTask;
+    });
+  }, [availableTasks, projectFilter, taskFilter]);
+
+  // Extract unique projects and tasks for dropdowns
+  const uniqueProjects = useMemo(() => {
+    const projects = new Set<string>();
+    availableTasks.forEach(t => projects.add(t.projectName));
+    allTasks.forEach(t => projects.add(t.project));
+    return Array.from(projects).sort();
+  }, [availableTasks, allTasks]);
+
+  const uniqueTasks = useMemo(() => {
+    const tasks = new Set<string>();
+
+    // If a project is selected, only show tasks for that project
+    const pmsSource = projectFilter && projectFilter !== 'all'
+      ? availableTasks.filter(t => t.projectName === projectFilter)
+      : availableTasks;
+
+    const trackerSource = projectFilter && projectFilter !== 'all'
+      ? allTasks.filter(t => t.project === projectFilter)
+      : allTasks;
+
+    pmsSource.forEach(t => tasks.add(t.task_name));
+    trackerSource.forEach(t => tasks.add(t.title));
+
+    return Array.from(tasks).sort();
+  }, [availableTasks, allTasks, projectFilter]);
+
+  // Update filtering logic to handle 'all'
+  const filteredAllTasksDropdown = useMemo(() => {
+    return allTasks.filter(task => {
+      const matchesProject = !projectFilter || projectFilter === 'all' || task.project === projectFilter;
+      const matchesTask = !taskFilter || taskFilter === 'all' || task.title === taskFilter;
+
+      // For tracked tasks, compare against today's date (formattedDate)
+      let matchesDateRange = true;
+      if (startDateFilter && formattedDate < startDateFilter) matchesDateRange = false;
+      if (endDateFilter && formattedDate > endDateFilter) matchesDateRange = false;
+
+      return matchesProject && matchesTask && matchesDateRange;
+    });
+  }, [allTasks, projectFilter, taskFilter, startDateFilter, endDateFilter, formattedDate]);
+
+  const filteredAvailableTasksDropdown = useMemo(() => {
+    return availableTasks.filter(task => {
+      const matchesProject = !projectFilter || projectFilter === 'all' || task.projectName === projectFilter;
+      const matchesTask = !taskFilter || taskFilter === 'all' || task.task_name === taskFilter;
+
+      // For PMS tasks, compare against deadlines or start/end dates
+      const taskStart = task.start_date || task.projectStartDate;
+      const taskEnd = task.taskDeadline || task.end_date || task.projectDeadline;
+
+      let matchesDateRange = true;
+      if (startDateFilter) {
+        // If task has an end date, it must be >= start filter. If only start date, it must be >= start filter.
+        const compareDate = taskEnd || taskStart;
+        if (compareDate) {
+          const formattedCompare = format(new Date(compareDate), 'yyyy-MM-dd');
+          if (formattedCompare < startDateFilter) matchesDateRange = false;
+        }
+      }
+      if (endDateFilter) {
+        // If task has a start date, it must be <= end filter.
+        const compareDate = taskStart || taskEnd;
+        if (compareDate) {
+          const formattedCompare = format(new Date(compareDate), 'yyyy-MM-dd');
+          if (formattedCompare > endDateFilter) matchesDateRange = false;
+        }
+      }
+
+      return matchesProject && matchesTask && matchesDateRange;
+    });
+  }, [availableTasks, projectFilter, taskFilter, startDateFilter, endDateFilter]);
 
   const totalWorkedMinutes = allTasks.reduce((acc, task) => acc + task.durationMinutes, 0);
-  const canSubmit = pendingTasks.length > 0 && totalWorkedMinutes >= shiftHours * 60;
+  const canSubmit =
+    pendingTasks.length > 0 &&
+    totalWorkedMinutes >= shiftHours * 60 &&
+    pendingDeadlineTasks.length === 0;
 
-  const handleSaveTask = async (taskData: any) => {
-    const startParts = taskData.startTime.split(':').map(Number);
-    const endParts = taskData.endTime.split(':').map(Number);
-    const startMinutes = startParts[0] * 60 + startParts[1];
-    const endMinutes = endParts[0] * 60 + endParts[1];
-    const duration = endMinutes - startMinutes;
 
-    if (editingTask) {
-      // Check if it's a local task or server task
-      if (editingTask.id.toString().startsWith('local-')) {
-        // Local task - update in state and localStorage
-        updatePendingTasks(pendingTasks.map(t =>
-          t.id === editingTask.id
-            ? { ...t, ...taskData, durationMinutes: duration }
-            : t
-        ));
-      } else {
-        // Server task - update via API
-        await updateMutation.mutateAsync({
-          id: editingTask.id.toString(),
-          data: {
-            projectName: taskData.project,
-            taskDescription: formatTaskDescription({ ...taskData, title: taskData.title, subTask: taskData.subTask, description: taskData.description, durationMinutes: duration }),
-            problemAndIssues: taskData.problemAndIssues || '',
-            quantify: taskData.quantify || '',
-            achievements: taskData.achievements || '',
-            scopeOfImprovements: taskData.scopeOfImprovements || '',
-            toolsUsed: taskData.toolsUsed || [],
-            startTime: taskData.startTime,
-            endTime: taskData.endTime,
-            totalHours: formatDuration(duration),
-            percentageComplete: taskData.percentageComplete || 0,
-          },
-        });
-      }
-    } else {
-      const newTask: Task = {
-        id: `local-${Date.now()}`,
-        project: taskData.project,
-        title: taskData.title,
-        subTask: taskData.subTask || '',
-        description: taskData.description,
-        problemAndIssues: taskData.problemAndIssues || '',
-        quantify: taskData.quantify || '',
-        achievements: taskData.achievements || '',
-        scopeOfImprovements: taskData.scopeOfImprovements || '',
-        toolsUsed: taskData.toolsUsed || [],
-        startTime: taskData.startTime,
-        endTime: taskData.endTime,
-        percentageComplete: taskData.percentageComplete || 0,
-        durationMinutes: duration,
-        isComplete: false,
-      };
-      updatePendingTasks([...pendingTasks, newTask]);
-    }
-
-    setShowTaskForm(false);
-    setEditingTask(null);
+  const handleSaveTask = async (taskData: Task) => {
+    // This function is now handled in TaskEntryPage.tsx
+    // Keeping minimal logic if any other direct calls exist, but normally not needed
   };
 
   const handleEditTask = (task: Task) => {
-    // Allow editing of local tasks OR server tasks that are still pending
-    if (task.id.startsWith('local-') || task.serverStatus === 'pending') {
-      setEditingTask(task);
-      setShowTaskForm(true);
-    } else {
-      toast({
-        title: "Cannot Edit",
-        description: "Only pending tasks can be edited.",
-        variant: "destructive",
-      });
-    }
+    setLocation(`/task-entry/${task.id}?date=${formattedDate}`);
   };
 
   const handleDeleteTask = async (taskId: string) => {
@@ -384,36 +451,16 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     }
   };
 
-  const handleQuickAddTask = (pmsTask: any) => {
-    // Create a pre-filled task form with PMS task details
-    const prefill: Task = {
-      id: `local-${Date.now()}`,
-      project: pmsTask.projectName,
-      title: pmsTask.task_name,
-      // keep reference to PMS task id so we can fetch postponement history
-      // @ts-ignore additional property
-      pmsId: pmsTask.id,
-      subTask: '',
-      description: pmsTask.description || '',
-      problemAndIssues: '',
-      quantify: '1',
-      achievements: '',
-      scopeOfImprovements: '',
-      toolsUsed: ['Others'],
-      startTime: '09:00',
-      endTime: '10:00',
-      durationMinutes: 60,
-      percentageComplete: 0,
-      isComplete: false,
-    } as Task;
-
-    // Add the prefilled draft to pendingTasks immediately so the form save will update it
-    updatePendingTasks([...pendingTasks, prefill]);
-    setEditingTask(prefill);
-    setShowTaskForm(true);
+  const handleQuickAddTask = (task: any) => {
+    const params = new URLSearchParams();
+    params.append('date', formattedDate);
+    // @ts-ignore
+    params.append('pmsId', task.id || task.pmsId || '');
+    params.append('pmsTaskName', task.task_name || '');
+    params.append('pmsProjectName', task.projectName || '');
+    params.append('pmsDescription', task.description || '');
+    setLocation(`/task-entry?${params.toString()}`);
   };
-
-  // (no direct quick-add) use `handleQuickAddTask` to open the form so user can fill remaining fields
 
   const handleCompleteTask = (taskId: string) => {
     updatePendingTasks(pendingTasks.map(t =>
@@ -422,8 +469,57 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [pendingDeadlineTasks, setPendingDeadlineTasks] = useState<any[]>([]);
   const [showPendingDialog, setShowPendingDialog] = useState(false);
+
+  // automatically refresh pending deadline tasks whenever date or user changes
+  // helper that filters a list of PMS tasks for those due on selected date
+  // and not yet added as a serverEntry or pendingTask
+  const extractDueToday = (list: any[]): any[] => {
+    const existingIds = new Set<string>([
+      ...todaysEntries.map(e => e.id.toString()),
+      ...pendingTasks.map(t => t.id.toString()),
+    ]);
+    return list.filter(t => {
+      if (existingIds.has(t.id?.toString())) return false;
+      const dt = t.end_date || t.start_date;
+      if (!dt) return false;
+      try {
+        return format(new Date(dt), 'yyyy-MM-dd') === formattedDate;
+      } catch {
+        return false;
+      }
+    });
+  };
+
+  useEffect(() => {
+    const load = async () => {
+      if (!user) return;
+      try {
+        const res = await fetch(`/api/pending-deadline-tasks?employeeId=${user.id}&date=${formattedDate}`);
+        let serverPending: any[] = [];
+        if (res.ok) {
+          const data = await res.json();
+          console.debug('[Tracker] pending-deadline response', formattedDate, data);
+          serverPending = Array.isArray(data) ? data : [];
+        } else {
+          console.debug('[Tracker] pending-deadline fetch returned non-ok', res.status);
+        }
+        // also include availableTasks due today that aren't already represented
+        const dueFromAvailable = extractDueToday(availableTasks);
+        // merge preserving unique ids (string)
+        const combined = [...serverPending];
+        dueFromAvailable.forEach(t => {
+          if (!combined.some(x => x.id === t.id)) combined.push(t);
+        });
+        setPendingDeadlineTasks(combined);
+      } catch (e) {
+        console.error('Failed to fetch pending deadline tasks in effect', e);
+        // fallback to availableTasks if any
+        setPendingDeadlineTasks(extractDueToday(availableTasks));
+      }
+    };
+    load();
+  }, [formattedDate, user, availableTasks]);
 
   // Update type to include 'acknowledge'
   const [postponeForm, setPostponeForm] = useState<Record<string, { selected: boolean; reason: string; newDate: string; action: 'extend' | 'keep' }>>({});
@@ -435,25 +531,48 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       // Check for pending deadline tasks for this employee on this date
       try {
         const res = await fetch(`/api/pending-deadline-tasks?employeeId=${user.id}&date=${formattedDate}`);
+        let pending: any[] = [];
         if (res.ok) {
-          const pending = await res.json();
-          if (Array.isArray(pending) && pending.length > 0) {
-            // require user to postpone or complete them first
-            setPendingDeadlineTasks(pending);
-            // initialize form
-            const formState: any = {};
-            pending.forEach((t: any) => {
-              formState[t.id] = { selected: false, reason: '', newDate: '', action: 'extend' }; // Default to extend
-            });
-            setPostponeForm(formState);
-            setShowPendingDialog(true);
-            setIsSubmitting(false);
-            return; // halt submission until user resolves
-          }
+          pending = await res.json();
+        }
+        // if backend returned none, fall back to availableTasks due today
+        if ((!Array.isArray(pending) || pending.length === 0) && availableTasks.length > 0) {
+          pending = extractDueToday(availableTasks);
+        }
+        if (Array.isArray(pending) && pending.length > 0) {
+          // have tasks due today – let the user know before showing the dialog
+          toast({
+            title: 'Pending PMS Tasks',
+            description: 'Some tasks are due today and must be postponed or acknowledged before you can submit.',
+          });
+          // require user to postpone or complete them first
+          setPendingDeadlineTasks(pending);
+          // initialize form
+          const formState: any = {};
+          pending.forEach((t: any) => {
+            formState[t.id] = { selected: false, reason: '', newDate: '', action: 'extend' }; // Default to extend
+          });
+          setPostponeForm(formState);
+          setShowPendingDialog(true);
+          setIsSubmitting(false);
+          return; // halt submission until user resolves
         }
       } catch (err) {
         console.error('Failed to check pending deadline tasks', err);
       }
+
+      // Validation: ensure there are tasks to submit and shift target met
+      if (pendingTasks.length === 0) {
+        toast({ title: 'Nothing to submit', description: 'Please add at least one task before submitting.', variant: 'destructive' });
+        setIsSubmitting(false);
+        return;
+      }
+      if (totalWorkedMinutes < shiftHours * 60) {
+        toast({ title: 'Shift incomplete', description: 'You have not reached your shift target yet.', variant: 'destructive' });
+        setIsSubmitting(false);
+        return;
+      }
+
       // Store tasks for confirmation display
       const tasksToSubmit = [...pendingTasks];
 
@@ -475,6 +594,8 @@ export default function TrackerPage({ user }: TrackerPageProps) {
           endTime: task.endTime,
           totalHours: formatDuration(task.durationMinutes),
           percentageComplete: task.percentageComplete,
+          pmsId: task.pmsId,
+          pmsSubtaskId: (task as any).pmsSubtaskId,
           status: 'pending',
         });
       }
@@ -537,6 +658,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
 
         if (f.action === 'extend') {
           await apiRequest('POST', `/api/tasks/${t.id}/postpone`, {
+            taskName: t.task_name,
             previousDueDate: t.end_date || t.start_date || null,
             newDueDate: f.newDate,
             reason: f.reason,
@@ -743,19 +865,39 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       />
 
       {/* Pending Tasks Info */}
-      {pendingTasks.length > 0 && (
+      {(pendingTasks.length > 0 || pendingDeadlineTasks.length > 0) && (
         <Card className="bg-yellow-500/10 border-yellow-500/30 p-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Send className="w-5 h-5 text-yellow-400" />
-              <span className="text-yellow-200">
-                {pendingTasks.length} task{pendingTasks.length > 1 ? 's' : ''} pending submission
-              </span>
+            <div className="flex flex-col sm:flex-row items-center gap-2">
+              {pendingDeadlineTasks.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-red-400" />
+                    <span className="text-red-200">
+                      {pendingDeadlineTasks.length} PMS task{pendingDeadlineTasks.length > 1 ? 's' : ''} due today not added
+                    </span>
+                  </div>
+                  <ul className="text-xs text-red-100 list-disc list-inside">
+                    {pendingDeadlineTasks.slice(0, 5).map(t => (
+                      <li key={t.id}>{t.task_name || t.projectName || t.id}</li>
+                    ))}
+                    {pendingDeadlineTasks.length > 5 && <li>...and {pendingDeadlineTasks.length - 5} more</li>}
+                  </ul>
+                </div>
+              )}
+              {pendingTasks.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Send className="w-5 h-5 text-yellow-400" />
+                  <span className="text-yellow-200">
+                    {pendingTasks.length} task{pendingTasks.length > 1 ? 's' : ''} pending submission
+                  </span>
+                </div>
+              )}
             </div>
             <Button
               onClick={handleFinalSubmit}
-              disabled={!canSubmit || submitMutation.isPending}
-              className="bg-yellow-600 hover:bg-yellow-500"
+              disabled={submitMutation.isPending}
+              className={`bg-yellow-600 hover:bg-yellow-500 ${!canSubmit ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {submitMutation.isPending ? (
                 <>
@@ -776,47 +918,79 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="text-lg font-semibold text-white">Today's Tasks</h2>
         <Button
-          onClick={() => {
-            setEditingTask(null);
-            setShowTaskForm(true);
-          }}
-          className="bg-gradient-to-r from-blue-600 to-cyan-600"
+          onClick={() => setLocation(`/task-entry?date=${formattedDate}`)}
+          className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all"
           data-testid="button-add-task"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Task
+          <Plus className="w-5 h-5 mr-2" />
+          Add New Task
         </Button>
       </div>
 
-      {showTaskForm && (
-        <TaskForm
-          task={editingTask ? {
-            id: editingTask.id,
-            project: editingTask.project,
-            title: editingTask.title,
-            // include pmsId if present so TaskForm can show postponements
-            // @ts-ignore
-            pmsId: (editingTask as any).pmsId,
-            subTask: editingTask.subTask || '',
-            description: editingTask.description,
-            problemAndIssues: (editingTask as any).problemAndIssues || '',
-            quantify: editingTask.quantify || '',
-            achievements: (editingTask as any).achievements || '',
-            scopeOfImprovements: (editingTask as any).scopeOfImprovements || '',
-            toolsUsed: editingTask.toolsUsed,
-            startTime: editingTask.startTime,
-            endTime: editingTask.endTime,
-            percentageComplete: editingTask.percentageComplete,
-          } : undefined}
-          onSave={handleSaveTask}
-          onCancel={() => {
-            setShowTaskForm(false);
-            setEditingTask(null);
-          }}
-          existingTasks={allTasks}
-          user={{ role: user.role, employeeCode: user.employeeCode }}
-        />
-      )}
+      {/* Filters Section */}
+      <Card className="bg-slate-800/50 border-blue-500/20 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-blue-200/70 flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Select Project
+            </label>
+            <Select value={projectFilter || 'all'} onValueChange={setProjectFilter}>
+              <SelectTrigger className="bg-slate-900/50 border-blue-500/20 text-white focus:border-blue-500/50">
+                <SelectValue placeholder="All Projects" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-blue-500/30 text-white">
+                <SelectItem value="all">All Projects</SelectItem>
+                {uniqueProjects.map(project => (
+                  <SelectItem key={project} value={project}>{project}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-blue-200/70 flex items-center gap-2">
+              <Zap className="w-4 h-4" />
+              Select Task
+            </label>
+            <Select value={taskFilter || 'all'} onValueChange={setTaskFilter}>
+              <SelectTrigger className="bg-slate-900/50 border-blue-500/20 text-white focus:border-blue-500/50">
+                <SelectValue placeholder="All Tasks" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-blue-500/30 text-white">
+                <SelectItem value="all">All Tasks</SelectItem>
+                {uniqueTasks.map(task => (
+                  <SelectItem key={task} value={task}>{task}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-blue-200/70 flex items-center gap-2">
+              <CalendarIcon className="w-4 h-4" />
+              Start Date
+            </label>
+            <Input
+              type="date"
+              value={startDateFilter}
+              onChange={(e) => setStartDateFilter(e.target.value)}
+              className="bg-slate-900/50 border-blue-500/20 text-white focus:border-blue-500/50"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-blue-200/70 flex items-center gap-2">
+              <CalendarIcon className="w-4 h-4" />
+              End Date
+            </label>
+            <Input
+              type="date"
+              value={endDateFilter}
+              onChange={(e) => setEndDateFilter(e.target.value)}
+              className="bg-slate-900/50 border-blue-500/20 text-white focus:border-blue-500/50"
+            />
+          </div>
+        </div>
+      </Card>
+
 
       {isLoading || isLoadingPMSTasks ? (
         <div className="flex items-center justify-center py-12">
@@ -825,20 +999,20 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       ) : (
         <>
           {/* Always show available PMS tasks if any exist */}
-          {availableTasks.length > 0 && (
+          {filteredAvailableTasksDropdown.length > 0 && (
             <div className="space-y-3">
               <Card className="bg-cyan-500/10 border-cyan-500/30 p-3">
                 <div className="flex items-center gap-2">
                   <Zap className="w-4 h-4 text-cyan-400 flex-shrink-0" />
                   <span className="text-cyan-200/70 text-sm">
-                    {availableTasks.length} task{availableTasks.length !== 1 ? 's' : ''} available - Click to add
+                    {filteredAvailableTasksDropdown.length} task{filteredAvailableTasksDropdown.length !== 1 ? 's' : ''} available - Click to add
                   </span>
                 </div>
               </Card>
 
               <Card className="bg-slate-800/50 border-blue-500/20 overflow-hidden">
                 <div className="divide-y divide-slate-700">
-                  {availableTasks.map((task, index) => {
+                  {filteredAvailableTasksDropdown.map((task, index) => {
                     // consider task already added locally
                     const isAdded = pendingTasks.some(pt => (
                       (pt.title === task.task_name || pt.title === task.task_name.trim()) && pt.project === task.projectName
@@ -953,13 +1127,33 @@ export default function TrackerPage({ user }: TrackerPageProps) {
           )}
 
           {/* Show the user's task table when there are tasks (server or pending) */}
-          {allTasks.length > 0 && (
+          {filteredAllTasksDropdown.length > 0 && (
             <TaskTable
-              tasks={allTasks}
+              tasks={filteredAllTasksDropdown}
               onEdit={handleEditTask}
               onDelete={handleDeleteTask}
               onComplete={handleCompleteTask}
             />
+          )}
+
+          {/* No results message */}
+          {((projectFilter && projectFilter !== 'all') || (taskFilter && taskFilter !== 'all') || startDateFilter || endDateFilter) && filteredAvailableTasksDropdown.length === 0 && filteredAllTasksDropdown.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-blue-200/40">
+              <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
+              <p>No tasks match your filters.</p>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setProjectFilter('all');
+                  setTaskFilter('all');
+                  setStartDateFilter('');
+                  setEndDateFilter('');
+                }}
+                className="text-blue-400 hover:text-blue-300 hover:bg-transparent p-0 h-auto font-normal"
+              >
+                Clear Filters
+              </Button>
+            </div>
           )}
         </>
       )}

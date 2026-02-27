@@ -39,7 +39,7 @@ async function checkDurgaDevi() {
     console.log(`  Role: ${durgaDevi.role}`);
     console.log(`  Email: ${durgaDevi.email}`);
 
-    // Check if department is set
+    // Check if department is set                   
     if (!durgaDevi.department) {
       console.log("\n⚠️  Department is NOT set for Durga Devi!");
       console.log("This is why no tasks are showing - the API needs a department to filter projects.");

@@ -166,7 +166,7 @@ async function migrateTable(
         const values = Object.values(row);
         const params = values.map((_, i) => `$${i + 1}`).join(", ");
         const query = insertQuery.replace("($1, $2, ...)", `(${params})`);
-        
+
         await targetPool.query(insertQuery, values);
         inserted++;
       } catch (err: any) {

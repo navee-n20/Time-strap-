@@ -12,19 +12,52 @@ const mockSubmission = {
   idleHours: 1.5,
   status: 'pending' as const,
   tasks: [
-    { title: 'Website Development', duration: '3h 30m', tools: ['VS Code', 'Chrome', 'ChatGPT'] },
-    { title: 'Team Meeting', duration: '1h', tools: ['MS Teams'] },
-    { title: 'Documentation', duration: '2h', tools: ['Notion', 'Word'] },
+    {
+      project: 'Website Redesign',
+      taskName: 'Website Development',
+      subtask: 'Frontend Implementation',
+      duration: '3h 30m',
+      description: 'Implemented the new landing page design using React and Tailwind CSS.',
+      quantifyResult: 'Completed 3 sections',
+      achievements: 'Optimized load time by 20%',
+      problemsIssues: 'None',
+      scopeImprovements: 'Add animations',
+      tools: ['VS Code', 'Chrome', 'ChatGPT']
+    },
+    {
+      project: 'Internal Review',
+      taskName: 'Team Meeting',
+      subtask: 'Weekly Sync',
+      duration: '1h',
+      description: 'Discussed project progress and upcoming deadlines.',
+      quantifyResult: 'N/A',
+      achievements: 'Aligned on next steps',
+      problemsIssues: 'None',
+      scopeImprovements: 'Shorter meetings',
+      tools: ['MS Teams']
+    },
+    {
+      project: 'Knowledge Base',
+      taskName: 'Documentation',
+      subtask: 'API Docs',
+      duration: '2h',
+      description: 'Wrote documentation for the new authentication endpoints.',
+      quantifyResult: '5 endpoints documented',
+      achievements: 'Clear examples added',
+      problemsIssues: 'Missing some error codes',
+      scopeImprovements: 'Add more examples',
+      tools: ['Notion', 'Word']
+    },
   ],
 };
 
 export default function ApprovalCardExample() {
   const [selected, setSelected] = useState(false);
-  
+
   return (
     <div className="bg-slate-950 min-h-screen p-6">
       <div className="max-w-xl mx-auto">
-        <ApprovalCard 
+        <ApprovalCard
           submission={mockSubmission}
           isSelected={selected}
           onSelect={(_, sel) => setSelected(sel)}

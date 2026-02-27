@@ -12,6 +12,7 @@ export const pmsPool = new Pool({
 
 // PMS Project interface matching Supabase schema
 export interface PMSProject {
+  id: string;
   project_code: string;
   project_name: string;
   description?: string;
@@ -21,7 +22,7 @@ export interface PMSProject {
   created_by_emp_code?: string;
   progress_percentage?: number;
   client_name?: string;
-  department?: string; // Legacy single department field
+  department?: string | string[]; // Legacy single department field or new array
   departments?: string[] | string; // New multiple departments field (array or comma-separated string)
   dept?: string; // Alternative department field name
   department_name?: string; // Alternative department field name
@@ -225,7 +226,7 @@ export const getTasks = async (projectId?: string, userDepartment?: string): Pro
 
     const result: QueryResult = await pmsPool.query(query, params);
     let tasks = result.rows as PMSTask[] || [];
-    
+
     console.log(`📊 PMS tasks returned: ${tasks.length} tasks`);
     if (tasks.length > 0) {
       console.log("📋 First task sample:", JSON.stringify(tasks[0], null, 2));
@@ -277,7 +278,7 @@ export const getSubtasks = async (taskId?: string, userDepartment?: string): Pro
     console.log("📡 Executing PMS getSubtasks query (fetching all subtasks)...");
 
     const result: QueryResult = await pmsPool.query(
-      'SELECT * FROM subtasks ORDER BY created_at'
+      'SELECT * FROM subtasks'
     );
 
     let subtasks = result.rows as PMSSubtask[] || [];
@@ -288,11 +289,13 @@ export const getSubtasks = async (taskId?: string, userDepartment?: string): Pro
       if (taskId) {
         console.log(`🔍 Filtering subtasks for taskId: ${taskId}`);
         subtasks = subtasks.filter(subtask => {
-          const matches = subtask.task_id == taskId || (subtask as any).taskid == taskId || (subtask as any).task == taskId ||
-                         (subtask as any).parent_task_id == taskId || (subtask as any).parent_task == taskId || (subtask as any).task_ref == taskId ||
-                         (subtask as any).taskId == taskId;
+          const sTaskId = String(subtask.task_id || (subtask as any).taskid || (subtask as any).task ||
+            (subtask as any).parent_task_id || (subtask as any).parent_task ||
+            (subtask as any).task_ref || (subtask as any).taskId).toLowerCase();
+          const targetId = String(taskId).toLowerCase();
+          const matches = sTaskId === targetId;
           if (matches) {
-            console.log(`✅ Found matching subtask:`, subtask);
+            console.log(`✅ Found matching subtask:`, subtask.title);
           }
           return matches;
         });
@@ -327,7 +330,7 @@ export const updateTaskInPMS = async (taskId: string, updates: { end_date?: stri
     if (setParts.length === 0) return null;
 
     params.push(taskId);
-    const query = `UPDATE project_tasks SET ${setParts.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`;
+    const query = `UPDATE project_tasks SET ${setParts.join(', ')} WHERE id = $${idx}::uuid RETURNING *`;
     const result: QueryResult = await pmsPool.query(query, params);
     if (result.rows && result.rows.length > 0) {
       return result.rows[0] as PMSTask;
@@ -336,5 +339,78 @@ export const updateTaskInPMS = async (taskId: string, updates: { end_date?: stri
   } catch (error) {
     console.error('Error updating task in PMS:', error);
     return null;
+  }
+};
+
+// Update project progress percentage in PMS
+export const updateProjectProgress = async (projectId: string, progress: number): Promise<boolean> => {
+  try {
+    console.log(`📡 Updating PMS project ${projectId} progress to ${progress}%`);
+    // Supports both UUID and project_code
+    const result = await pmsPool.query(
+      'UPDATE projects SET progress = $1, updated_at = NOW() WHERE id::text = $2 OR project_code = $2',
+      [progress, projectId]
+    );
+    const success = (result.rowCount ?? 0) > 0;
+    if (success) {
+      console.log(`✅ Successfully updated PMS project ${projectId} progress`);
+    } else {
+      console.log(`⚠️ No rows updated for PMS project ${projectId}`);
+    }
+    return success;
+  } catch (error) {
+    console.error('💥 Error updating project progress in PMS:', error);
+    return false;
+  }
+};
+// Update a PMS subtask status
+export const updateSubtaskInPMS = async (subtaskId: string, isCompleted: boolean): Promise<PMSSubtask | null> => {
+  try {
+    console.log(`📡 Updating PMS subtask ${subtaskId} is_completed to ${isCompleted}`);
+    const result: QueryResult = await pmsPool.query(
+      'UPDATE subtasks SET is_completed = $1 WHERE id = $2::uuid RETURNING *',
+      [isCompleted, subtaskId]
+    );
+    if (result.rows && result.rows.length > 0) {
+      console.log(`✅ Successfully updated PMS subtask ${subtaskId}`);
+      return result.rows[0] as PMSSubtask;
+    }
+    console.log(`⚠️ No rows updated for PMS subtask ${subtaskId}`);
+    return null;
+  } catch (error) {
+    console.error('💥 Error updating subtask in PMS:', error);
+    return null;
+  }
+};
+
+// Check if all subtasks for a task are completed and mark parent task as Completed
+export const checkAndMarkTaskCompleted = async (taskId: string): Promise<boolean> => {
+  try {
+    console.log(`🔍 Checking subtasks completion for task ${taskId}`);
+
+    // Fetch all subtasks for this task
+    // We use getSubtasks helper which already handle multiple column name variations (task_id, taskid, etc)
+    const subtasks = await getSubtasks(taskId);
+
+    if (subtasks.length === 0) {
+      console.log(`ℹ️ Task ${taskId} has no subtasks, marking as Completed directly`);
+      await updateTaskInPMS(taskId, { status: 'Completed' });
+      return true;
+    }
+
+    // Standardize comparison to ensure we catch booleans correctly
+    const allCompleted = subtasks.every(st => String(st.is_completed).toLowerCase() === 'true');
+    console.log(`📊 Task ${taskId}: ${subtasks.filter(st => String(st.is_completed).toLowerCase() === 'true').length}/${subtasks.length} subtasks completed.`);
+
+    if (allCompleted) {
+      console.log(`✅ All subtasks for task ${taskId} are completed. Marking task as Completed.`);
+      await updateTaskInPMS(taskId, { status: 'Completed' });
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('💥 Error checking task completion in PMS:', error);
+    return false;
   }
 };

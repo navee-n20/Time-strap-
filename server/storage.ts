@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, pool } from "./db";
 import { eq, desc, and } from "drizzle-orm";
 import {
   organisations,
@@ -38,7 +38,7 @@ export interface IStorage {
   updateOrganisation(id: string, org: Partial<InsertOrganisation>): Promise<Organisation | undefined>;
   deleteOrganisation(id: string): Promise<boolean>;
 
-  // Departments
+  // Departments  
   getDepartments(): Promise<Department[]>;
   getDepartment(id: string): Promise<Department | undefined>;
   createDepartment(dept: InsertDepartment): Promise<Department>;
@@ -67,7 +67,7 @@ export interface IStorage {
   updateTask(id: string, task: Partial<any>): Promise<Task | undefined>;
   deleteTask(id: string): Promise<boolean>;
 
-  // Subtasks
+  // Subtasks   
   getSubtasks(): Promise<Subtask[]>;
   getSubtask(id: string): Promise<Subtask | undefined>;
   getSubtasksByTask(taskId: string): Promise<Subtask[]>;
@@ -87,6 +87,8 @@ export interface IStorage {
   getTimeEntries(): Promise<TimeEntry[]>;
   getTimeEntry(id: string): Promise<TimeEntry | undefined>;
   getTimeEntriesByEmployee(employeeId: string): Promise<TimeEntry[]>;
+  // Added for grouped daily email summaries
+  getTimeEntriesByEmployeeAndDate(employeeId: string, date: string): Promise<TimeEntry[]>;
   getPendingTimeEntries(): Promise<TimeEntry[]>;
   createTimeEntry(entry: InsertTimeEntry): Promise<TimeEntry>;
   updateTimeEntry(id: string, data: Partial<InsertTimeEntry>): Promise<TimeEntry | undefined>;
@@ -100,6 +102,7 @@ export interface IStorage {
   createManager(manager: InsertManager): Promise<Manager>;
   seedManagers(): Promise<void>;
   seedDefaultEmployees(): Promise<void>;
+  getAllTaskPostponements(): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -364,6 +367,18 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(timeEntries.submittedAt));
   }
 
+  // fetch all entries for a specific employee on a given date, ordered by start time
+  async getTimeEntriesByEmployeeAndDate(employeeId: string, date: string): Promise<TimeEntry[]> {
+    return await db.select().from(timeEntries)
+      .where(
+        and(
+          eq(timeEntries.employeeId, employeeId),
+          eq(timeEntries.date, date)
+        )
+      )
+      .orderBy(timeEntries.startTime);
+  }
+
   async getPendingTimeEntries(): Promise<TimeEntry[]> {
     return await db.select().from(timeEntries)
       .where(eq(timeEntries.status, "pending"))
@@ -540,6 +555,27 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error("Error syncing passwords:", error);
     }
+  }
+
+  async getAllTaskPostponements(): Promise<any[]> {
+    const result = await pool.query(`
+      SELECT 
+        tp.id,
+        tp.task_id as "taskId",
+        tp.task_name as "taskName",
+        tp.previous_due_date as "previousDueDate",
+        tp.new_due_date as "newDueDate",
+        tp.reason,
+        tp.postponed_by as "postponedBy",
+        tp.postponed_at as "postponedAt",
+        tp.postpone_count as "postponeCount",
+        e.name as "employeeName",
+        e.employee_code as "employeeCode"
+      FROM task_postponements tp
+      LEFT JOIN employees e ON tp.postponed_by = e.id
+      ORDER BY tp.postponed_at DESC
+    `);
+    return result.rows;
   }
 }
 
