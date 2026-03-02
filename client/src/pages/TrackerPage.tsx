@@ -58,6 +58,9 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   const [submittedTasks, setSubmittedTasks] = useState<Task[]>([]);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [blockUnassignedTasks, setBlockUnassignedTasks] = useState(false);
+  // When true, pending PMS tasks due today will block final submission (legacy behaviour).
+  // Off by default – employees can submit once shift time is met.
+  const [requirePmsTasksBeforeSubmit, setRequirePmsTasksBeforeSubmit] = useState(false);
   const [projectFilter, setProjectFilter] = useState('');
   const [taskFilter, setTaskFilter] = useState('');
   const [startDateFilter, setStartDateFilter] = useState('');
@@ -420,7 +423,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   const canSubmit =
     pendingTasks.length > 0 &&
     totalWorkedMinutes >= shiftHours * 60 &&
-    pendingDeadlineTasks.length === 0;
+    (!requirePmsTasksBeforeSubmit || pendingDeadlineTasks.length === 0);
 
 
   const handleSaveTask = async (taskData: Task) => {
@@ -529,36 +532,39 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     setIsSubmitting(true);
     try {
       // Check for pending deadline tasks for this employee on this date
-      try {
-        const res = await fetch(`/api/pending-deadline-tasks?employeeId=${user.id}&date=${formattedDate}`);
-        let pending: any[] = [];
-        if (res.ok) {
-          pending = await res.json();
+      // Only block submission when the feature is explicitly enabled in Settings.
+      if (requirePmsTasksBeforeSubmit) {
+        try {
+          const res = await fetch(`/api/pending-deadline-tasks?employeeId=${user.id}&date=${formattedDate}`);
+          let pending: any[] = [];
+          if (res.ok) {
+            pending = await res.json();
+          }
+          // if backend returned none, fall back to availableTasks due today
+          if ((!Array.isArray(pending) || pending.length === 0) && availableTasks.length > 0) {
+            pending = extractDueToday(availableTasks);
+          }
+          if (Array.isArray(pending) && pending.length > 0) {
+            // have tasks due today – let the user know before showing the dialog
+            toast({
+              title: 'Pending PMS Tasks',
+              description: 'Some tasks are due today and must be postponed or acknowledged before you can submit.',
+            });
+            // require user to postpone or complete them first
+            setPendingDeadlineTasks(pending);
+            // initialize form
+            const formState: any = {};
+            pending.forEach((t: any) => {
+              formState[t.id] = { selected: false, reason: '', newDate: '', action: 'extend' }; // Default to extend
+            });
+            setPostponeForm(formState);
+            setShowPendingDialog(true);
+            setIsSubmitting(false);
+            return; // halt submission until user resolves
+          }
+        } catch (err) {
+          console.error('Failed to check pending deadline tasks', err);
         }
-        // if backend returned none, fall back to availableTasks due today
-        if ((!Array.isArray(pending) || pending.length === 0) && availableTasks.length > 0) {
-          pending = extractDueToday(availableTasks);
-        }
-        if (Array.isArray(pending) && pending.length > 0) {
-          // have tasks due today – let the user know before showing the dialog
-          toast({
-            title: 'Pending PMS Tasks',
-            description: 'Some tasks are due today and must be postponed or acknowledged before you can submit.',
-          });
-          // require user to postpone or complete them first
-          setPendingDeadlineTasks(pending);
-          // initialize form
-          const formState: any = {};
-          pending.forEach((t: any) => {
-            formState[t.id] = { selected: false, reason: '', newDate: '', action: 'extend' }; // Default to extend
-          });
-          setPostponeForm(formState);
-          setShowPendingDialog(true);
-          setIsSubmitting(false);
-          return; // halt submission until user resolves
-        }
-      } catch (err) {
-        console.error('Failed to check pending deadline tasks', err);
       }
 
       // Validation: ensure there are tasks to submit and shift target met
@@ -1440,11 +1446,32 @@ export default function TrackerPage({ user }: TrackerPageProps) {
               </div>
             </div>
 
+            {/* PMS Task Blocking Toggle */}
+            <div className="bg-slate-800/40 p-4 rounded border border-slate-700">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-white mb-1">Require PMS Tasks Resolved Before Submit</label>
+                  <p className="text-xs text-blue-200/60">When ON, employees must postpone or acknowledge all pending PMS tasks (due today) before the Final Submit is allowed</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={requirePmsTasksBeforeSubmit}
+                  onChange={(e) => setRequirePmsTasksBeforeSubmit(e.target.checked)}
+                  className="w-5 h-5 cursor-pointer"
+                />
+              </div>
+              <div className="mt-3 text-xs text-blue-200/50">
+                Status: <span className={requirePmsTasksBeforeSubmit ? 'text-amber-400 font-semibold' : 'text-green-400 font-semibold'}>
+                  {requirePmsTasksBeforeSubmit ? 'ENABLED (blocks on pending PMS tasks)' : 'DISABLED (submit freely after shift)'}
+                </span>
+              </div>
+            </div>
+
             <div className="bg-slate-800/20 p-3 rounded border border-slate-700/50 text-xs text-blue-200/70">
               <p><strong>Current Policy:</strong></p>
               <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Assigned tasks due today always block submission</li>
                 <li>Unassigned project tasks: <span className={blockUnassignedTasks ? 'text-amber-400' : 'text-green-400'}>{blockUnassignedTasks ? 'WILL BLOCK' : 'will NOT block'}</span></li>
+                <li>PMS task completion check: <span className={requirePmsTasksBeforeSubmit ? 'text-amber-400' : 'text-green-400'}>{requirePmsTasksBeforeSubmit ? 'REQUIRED' : 'Not required'}</span></li>
               </ul>
             </div>
           </div>
